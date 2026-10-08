@@ -22,7 +22,7 @@ const BASE_IDENTIFIER = 'cc.toolmint.triply';
  * Until then, EAS Update is not configured and `updates.url` is omitted.
  */
 // TODO(Phase 0M native verification): paste the ID printed by `npx eas-cli init`.
-const EAS_PROJECT_ID = '';
+const EAS_PROJECT_ID = '59d71cf4-febd-41dc-9ffe-8e8177f854b0';
 
 interface VariantConfig {
   name: string;
