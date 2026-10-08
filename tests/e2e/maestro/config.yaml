@@ -1,0 +1,6 @@
+# Maestro workspace config — https://docs.maestro.dev
+# Run from the repo root:  maestro test tests/e2e/maestro
+flows:
+  - flows/*
+executionOrder:
+  continueOnFailure: false

@@ -1,0 +1,37 @@
+# Phase 0M smoke: app launches, tab shell works, cross-group navigation + back.
+# Targets the development build (cc.toolmint.triply.dev) with Metro running.
+appId: cc.toolmint.triply.dev
+name: Smoke — tab shell and navigation
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: discover-screen
+    timeout: 30000
+- tapOn:
+    id: tab-matches
+- assertVisible:
+    id: matches-screen
+- tapOn:
+    id: tab-trips
+- assertVisible:
+    id: trips-screen
+- tapOn:
+    id: tab-profile
+- assertVisible:
+    id: profile-screen
+- tapOn:
+    id: open-sign-in
+- assertVisible:
+    id: sign-in-placeholder
+- back
+- assertVisible:
+    id: profile-screen
+- tapOn:
+    id: open-onboarding
+- assertVisible:
+    id: onboarding-placeholder
+- tapOn: Back
+- assertVisible:
+    id: profile-screen

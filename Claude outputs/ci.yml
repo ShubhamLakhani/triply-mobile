@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPO_NO_TELEMETRY: '1'
+  CI: '1'
+
+jobs:
+  verify:
+    name: Lint · Typecheck · Test · Config · Bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Clean install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit & component tests
+        run: npm run test:ci
+
+      - name: Formatting
+        run: npm run format:check
+
+      - name: Security guard (secrets, EXPO_PUBLIC allowlist, env files)
+        run: npm run security:check
+
+      - name: Expo config (all variants)
+        run: npm run config:check
+
+      - name: Expo dependency compatibility
+        run: npx expo install --check
+
+      # Proves the JS bundle compiles to Hermes bytecode for both platforms.
+      # Placeholder PUBLIC values only — never real credentials in CI logs.
+      - name: Metro export (iOS + Android)
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: https://placeholder-ref.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_placeholder_ci_only_0000
+        run: |
+          npx expo export --platform ios --output-dir dist/ios
+          npx expo export --platform android --output-dir dist/android
+
+  doctor:
+    name: Expo Doctor
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx expo-doctor
+
+  audit:
+    name: Dependency audit (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Current findings are transitive in Expo CLI / build tooling, not the app bundle.
+    # Kept visible but non-blocking until Expo ships patched tooling.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
