@@ -12,7 +12,14 @@ export interface FakeResult {
   error: unknown;
 }
 
-export function createFakeSupabase(result: FakeResult) {
+/** Per-method results for `client.storage.from(bucket)`; defaults to success. */
+export interface FakeStorageResults {
+  upload?: FakeResult;
+  remove?: FakeResult;
+  createSignedUrl?: FakeResult;
+}
+
+export function createFakeSupabase(result: FakeResult, storageResults: FakeStorageResults = {}) {
   const calls: RecordedCall[] = [];
   const record =
     (method: string) =>
@@ -39,7 +46,25 @@ export function createFakeSupabase(result: FakeResult) {
     // Awaiting the builder directly (list queries) resolves to the result.
     then: (resolve: (value: FakeResult) => unknown) => Promise.resolve(result).then(resolve),
   };
+  const storageCall =
+    (bucket: string, method: keyof FakeStorageResults, fallback: FakeResult) =>
+    async (...args: unknown[]) => {
+      // Binary bodies are recorded by type only, to keep assertions readable.
+      const recorded = args.map((arg) => (arg instanceof ArrayBuffer ? 'ArrayBuffer' : arg));
+      calls.push({ method: `storage.${method}`, args: [bucket, ...recorded] });
+      return storageResults[method] ?? fallback;
+    };
   const client = {
+    storage: {
+      from: (bucket: string) => ({
+        upload: storageCall(bucket, 'upload', { data: { path: 'ok' }, error: null }),
+        remove: storageCall(bucket, 'remove', { data: [], error: null }),
+        createSignedUrl: storageCall(bucket, 'createSignedUrl', {
+          data: { signedUrl: 'https://example.test/signed' },
+          error: null,
+        }),
+      }),
+    },
     from: (table: string) => (calls.push({ method: 'from', args: [table] }), builder),
     // rpc() is chainable (e.g. `.rpc(...).single()`) and also awaitable directly.
     rpc: (fn: string, args: unknown) => (calls.push({ method: 'rpc', args: [fn, args] }), builder),

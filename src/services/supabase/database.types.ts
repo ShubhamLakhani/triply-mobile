@@ -235,6 +235,56 @@ export type Database = {
           },
         ]
       }
+      profile_photos: {
+        Row: {
+          created_at: string
+          file_size_bytes: number
+          height: number | null
+          id: string
+          is_primary: boolean
+          mime_type: string
+          position: number
+          storage_path: string
+          updated_at: string
+          user_id: string
+          width: number | null
+        }
+        Insert: {
+          created_at?: string
+          file_size_bytes: number
+          height?: number | null
+          id?: string
+          is_primary?: boolean
+          mime_type: string
+          position: number
+          storage_path: string
+          updated_at?: string
+          user_id: string
+          width?: number | null
+        }
+        Update: {
+          created_at?: string
+          file_size_bytes?: number
+          height?: number | null
+          id?: string
+          is_primary?: boolean
+          mime_type?: string
+          position?: number
+          storage_path?: string
+          updated_at?: string
+          user_id?: string
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_photos_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           bio: string | null
@@ -503,6 +553,58 @@ export type Database = {
           created_at: string
         }[]
       }
+      delete_profile_photo: { Args: { p_photo_id: string }; Returns: string }
+      register_profile_photo: {
+        Args: {
+          p_file_size_bytes: number
+          p_height?: number
+          p_mime_type: string
+          p_photo_id: string
+          p_storage_path: string
+          p_width?: number
+        }
+        Returns: {
+          created_at: string
+          file_size_bytes: number
+          height: number | null
+          id: string
+          is_primary: boolean
+          mime_type: string
+          position: number
+          storage_path: string
+          updated_at: string
+          user_id: string
+          width: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "profile_photos"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      reorder_profile_photos: {
+        Args: { p_photo_ids: string[] }
+        Returns: {
+          created_at: string
+          file_size_bytes: number
+          height: number | null
+          id: string
+          is_primary: boolean
+          mime_type: string
+          position: number
+          storage_path: string
+          updated_at: string
+          user_id: string
+          width: number | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "profile_photos"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       replace_profile_interests: {
         Args: { p_interest_ids: string[] }
         Returns: {
@@ -540,6 +642,28 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "discovery_gender_preferences"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      set_primary_profile_photo: {
+        Args: { p_photo_id: string }
+        Returns: {
+          created_at: string
+          file_size_bytes: number
+          height: number | null
+          id: string
+          is_primary: boolean
+          mime_type: string
+          position: number
+          storage_path: string
+          updated_at: string
+          user_id: string
+          width: number | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "profile_photos"
           isOneToOne: false
           isSetofReturn: true
         }
