@@ -291,18 +291,114 @@ returns only discovery-safe fields for trips where all of the following hold:
 
 Hidden and cancelled trips are never eligible.
 
+## Preferences + interests (Phase 1M-D)
+
+Migration: `migrations/20261009103602_preferences_interests.sql`. Tests:
+`tests/database/preferences_interests.test.sql` (plus the interest checks in `seed.test.sql`).
+
+Everything here belongs to the signed-in user. No client can read another user's interests or
+preferences.
+
+### `public.interests` (catalog)
+
+| Column     | Rules                                                                          |
+| ---------- | ------------------------------------------------------------------------------ |
+| `slug`     | unique, 2–60 chars, lowercase URL-safe (`digital-nomad`)                       |
+| `label`    | trimmed, 1–60 chars (`Digital nomad`)                                          |
+| `category` | optional, lowercase (`outdoors`, `culture`, `lifestyle`, `social`, `wellness`) |
+| `active`   | default `true`; inactive interests are hidden and can't be newly selected      |
+
+- **Reads:** signed-in users can read **active** interests only. Logged-out users (`anon`) have
+  no access.
+- **Writes:** only migrations, the seed or server tooling. The app can't create free-text
+  interests.
+
+### `public.profile_interests` (selections)
+
+- **Shape:** primary key `(user_id, interest_id)`, so the same interest can't be selected twice.
+  `user_id` defaults to `auth.uid()`.
+- **Interest references:** an interest that is still selected can't be deleted from the catalog
+  (FK restrict).
+- **Access:** the owner can read, add and remove their own rows. There is no UPDATE; remove one
+  and add another instead.
+- **Limit of 10 interests per user.** This keeps profiles focused and makes shared-interest
+  signals meaningful.
+  - Enforced by `private.profile_interests_before_insert()`.
+  - A per-user advisory lock means concurrent inserts can't push a user past 10.
+  - The 11th insert fails with `23514`.
+- **Inactive interests:** can't be newly selected (`23503`). A selection made before an interest
+  was deactivated stays until the user removes it. The app sees its `interest` as `null`.
+
+### `public.discovery_preferences` (one row per profile)
+
+| Column                 | Default | Rule                                                                                                  |
+| ---------------------- | ------- | ----------------------------------------------------------------------------------------------------- |
+| `min_age`              | 18      | ≥ 18                                                                                                  |
+| `max_age`              | 99      | ≤ 99 and ≥ `min_age`                                                                                  |
+| `minimum_overlap_days` | 1       | 1–60: how many days two trips must share. 60 blocks absurd input without limiting real travel         |
+| `max_distance_km`      | null    | optional, 1–20000. **Future-facing only**: Triply collects no live location and nothing uses this yet |
+
+- **Created automatically:** `private.handle_new_profile()`, an AFTER INSERT trigger on
+  `public.profiles`, creates the row. It's idempotent, and the migration backfilled existing
+  profiles.
+- **Access:** the owner can SELECT and UPDATE the four preference columns. There is no
+  INSERT or DELETE.
+- **Protected:** `user_id` can't be changed, even by server-side writes, and `created_at` is
+  preserved.
+
+### `public.discovery_gender_preferences`
+
+- **Shape:** zero or more rows of `(user_id, gender)`. Values match `profiles.gender`: `man`,
+  `woman`, `non_binary`, `other`, `prefer_not_to_say`.
+- **"Everyone":** selected by choosing every value. There is no "everyone" sentinel value.
+- **No rows** means not configured yet. Discovery will decide how to treat that; onboarding
+  should require at least one.
+- **Access:** the owner can read, add and remove their own rows. There is no UPDATE.
+
+### Atomic replacement RPCs
+
+Use these for multi-select screens:
+
+- `replace_profile_interests(uuid[])` and `set_discovery_gender_preferences(text[])`.
+- **Same rules as direct writes:** they run as the caller (SECURITY INVOKER), so access policies,
+  grants, the 10-interest limit and active-only selection all still apply.
+- **All or nothing:** each call is one transaction, so an invalid entry rejects the whole call
+  and leaves the previous selection intact. Duplicate entries in the input are collapsed.
+- **Who can call them:** signed-in users only. Logged-out users get a permission error.
+
+### Indexes
+
+- **`profile_interests_interest_id_idx`:** supports the `interest_id` FK (catalog changes) and
+  future shared-interest lookups. Lookups by `user_id` use the primary key.
+- **No extra index on gender preferences:** per-user reads use the primary key. A reverse index
+  on `gender` can be added alongside the discovery RPC if it needs one.
+
+### How discovery will use these (later phase)
+
+These tables will never get broad SELECT policies. The discovery RPC (SECURITY DEFINER) will
+read them server-side to:
+
+- filter candidates by mutual age range, mutual gender preference and trip overlap of at least
+  `minimum_overlap_days`
+- return only derived, discovery-safe results, such as "3 shared interests"
+
+It will never expose another user's raw preference or selection rows.
+
 ## Seed data
 
-`seed.sql` holds development and staging **reference data only**. Right now that's the starter
-destination catalog: Bali, Bangkok, Dubai, Barcelona, Paris and Lisbon.
+`seed.sql` holds development and staging **reference data only**. Right now that's two catalogs:
+
+- **Destinations:** Bali, Bangkok, Dubai, Barcelona, Paris and Lisbon.
+- **Interests:** hiking, photography, food, coffee, beaches, surfing, nightlife, fitness, art,
+  music, adventure, culture, wellness and digital nomad.
 
 - **Local stack:** applied automatically on `supabase start` and `supabase db reset`.
 - **Triply Development:** applied only on explicit request:
   `npx supabase db push --include-seed`, while linked to Triply Development.
 - **Production:** never. Production reference data ships through reviewed migrations or
   server tooling.
-- **Idempotent:** every insert upserts on a stable key (`destinations.slug`), so re-running it
+- **Idempotent:** every insert upserts on a stable key (`slug`), so re-running it
   never duplicates rows. `npm run test:db` applies it twice to prove this.
-- **No personal data:** no users, profiles or trips. `npm run migrations:check` fails if the
-  seed writes any table other than `public.destinations`, or if an insert lacks
-  `ON CONFLICT`.
+- **No personal data:** no users, profiles, trips, interest selections or preferences.
+  `npm run migrations:check` fails if the seed writes any table other than
+  `public.destinations` or `public.interests`, or if an insert lacks `ON CONFLICT`.

@@ -30,6 +30,7 @@ export function createFakeSupabase(result: FakeResult) {
     select: record('select'),
     insert: record('insert'),
     update: record('update'),
+    delete: record('delete'),
     eq: record('eq'),
     order: record('order'),
     single: settle('single'),
@@ -39,6 +40,10 @@ export function createFakeSupabase(result: FakeResult) {
   };
   const client = {
     from: (table: string) => (calls.push({ method: 'from', args: [table] }), builder),
+    rpc: async (fn: string, args: unknown) => {
+      calls.push({ method: 'rpc', args: [fn, args] });
+      return result;
+    },
   };
   return { client, calls };
 }

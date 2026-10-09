@@ -59,6 +59,133 @@ export type Database = {
         }
         Relationships: []
       }
+      discovery_gender_preferences: {
+        Row: {
+          created_at: string
+          gender: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          gender: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          gender?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "discovery_gender_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      discovery_preferences: {
+        Row: {
+          created_at: string
+          max_age: number
+          max_distance_km: number | null
+          min_age: number
+          minimum_overlap_days: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          max_age?: number
+          max_distance_km?: number | null
+          min_age?: number
+          minimum_overlap_days?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          max_age?: number
+          max_distance_km?: number | null
+          min_age?: number
+          minimum_overlap_days?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "discovery_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      interests: {
+        Row: {
+          active: boolean
+          category: string | null
+          created_at: string
+          id: string
+          label: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          category?: string | null
+          created_at?: string
+          id?: string
+          label: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          category?: string | null
+          created_at?: string
+          id?: string
+          label?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profile_interests: {
+        Row: {
+          created_at: string
+          interest_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          interest_id: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          interest_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_interests_interest_id_fkey"
+            columns: ["interest_id"]
+            isOneToOne: false
+            referencedRelation: "interests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_interests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           bio: string | null
@@ -160,7 +287,34 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      replace_profile_interests: {
+        Args: { p_interest_ids: string[] }
+        Returns: {
+          created_at: string
+          interest_id: string
+          user_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "profile_interests"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      set_discovery_gender_preferences: {
+        Args: { p_genders: string[] }
+        Returns: {
+          created_at: string
+          gender: string
+          user_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "discovery_gender_preferences"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
     }
     Enums: {
       [_ in never]: never

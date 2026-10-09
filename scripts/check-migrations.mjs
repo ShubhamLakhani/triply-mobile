@@ -8,7 +8,8 @@
  *  3. Row level security is never disabled.
  *  4. No secrets / service-role material in SQL.
  *  5. seed.sql contains no DDL (schema belongs in migrations).
- *  6. seed.sql only writes reference tables (no users, profiles, trips or other personal data)
+ *  6. seed.sql only writes approved catalog tables (destinations, interests); never users,
+ *     profiles, trips, selections, preferences or other personal data
  *     and every INSERT is idempotent (ON CONFLICT).
  */
 import { readdirSync, readFileSync } from 'node:fs';
@@ -76,7 +77,7 @@ if (/\b(create|alter|drop)\s+(table|schema|function|policy|type|extension)\b/.te
   failures.push('supabase/seed.sql: contains DDL — schema changes belong in migrations');
 }
 
-const SEED_WRITABLE_TABLES = ['public.destinations'];
+const SEED_WRITABLE_TABLES = ['public.destinations', 'public.interests'];
 // `on conflict ... do update set` is part of an upsert, not a separate UPDATE statement.
 const seedWrites =
   /\b(?:insert\s+into|(?<!\bdo\s+)update|delete\s+from|truncate(?:\s+table)?)\s+([\w."]+)/g;

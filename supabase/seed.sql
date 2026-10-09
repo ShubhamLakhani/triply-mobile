@@ -13,8 +13,9 @@
 --     migrations or server tooling, not this file.
 --
 -- Rules
---   * Reference/catalog data only. No users, profiles, trips or any personal
---     data (enforced by scripts/check-migrations.mjs).
+--   * Reference/catalog data only (destinations, interests). No users,
+--     profiles, trips, interest selections, preferences or any personal data
+--     (enforced by scripts/check-migrations.mjs).
 --   * No schema changes here. Schema belongs in supabase/migrations/.
 --   * Idempotent: every statement must be safe to re-run (upsert on a stable
 --     natural key such as destinations.slug).
@@ -39,3 +40,26 @@ on conflict (slug) do update
       longitude    = excluded.longitude,
       timezone     = excluded.timezone,
       active       = true;
+
+-- Starter interest catalog (Phase 1M-D). Stable slugs; small and curated.
+-- Never seed user selections (profile_interests) or preferences here.
+insert into public.interests (slug, label, category)
+values
+  ('hiking',        'Hiking',        'outdoors'),
+  ('photography',   'Photography',   'culture'),
+  ('food',          'Food',          'lifestyle'),
+  ('coffee',        'Coffee',        'lifestyle'),
+  ('beaches',       'Beaches',       'outdoors'),
+  ('surfing',       'Surfing',       'outdoors'),
+  ('nightlife',     'Nightlife',     'social'),
+  ('fitness',       'Fitness',       'wellness'),
+  ('art',           'Art',           'culture'),
+  ('music',         'Music',         'culture'),
+  ('adventure',     'Adventure',     'outdoors'),
+  ('culture',       'Culture',       'culture'),
+  ('wellness',      'Wellness',      'wellness'),
+  ('digital-nomad', 'Digital nomad', 'lifestyle')
+on conflict (slug) do update
+  set label    = excluded.label,
+      category = excluded.category,
+      active   = true;
