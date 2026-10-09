@@ -331,6 +331,39 @@ export type Database = {
           },
         ]
       }
+      user_blocks: {
+        Row: {
+          blocked_user_id: string
+          blocker_user_id: string
+          created_at: string
+        }
+        Insert: {
+          blocked_user_id: string
+          blocker_user_id: string
+          created_at?: string
+        }
+        Update: {
+          blocked_user_id?: string
+          blocker_user_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_blocks_blocked_user_id_fkey"
+            columns: ["blocked_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_blocks_blocker_user_id_fkey"
+            columns: ["blocker_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_decisions: {
         Row: {
           actor_user_id: string
@@ -393,11 +426,83 @@ export type Database = {
           },
         ]
       }
+      user_reports: {
+        Row: {
+          created_at: string
+          details: string | null
+          id: string
+          reason: string
+          related_match_id: string | null
+          related_trip_id: string | null
+          reported_user_id: string
+          reporter_user_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          reason: string
+          related_match_id?: string | null
+          related_trip_id?: string | null
+          reported_user_id: string
+          reporter_user_id: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          reason?: string
+          related_match_id?: string | null
+          related_trip_id?: string | null
+          reported_user_id?: string
+          reporter_user_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_reports_related_match_id_fkey"
+            columns: ["related_match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_reports_related_trip_id_fkey"
+            columns: ["related_trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_reports_reported_user_id_fkey"
+            columns: ["reported_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_reports_reporter_user_id_fkey"
+            columns: ["reporter_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      block_user: {
+        Args: { p_target_user_id: string }
+        Returns: {
+          blocked_user_id: string
+          created_at: string
+        }[]
+      }
       replace_profile_interests: {
         Args: { p_interest_ids: string[] }
         Returns: {
@@ -411,6 +516,19 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      report_user: {
+        Args: {
+          p_details?: string
+          p_reason: string
+          p_related_match_id?: string
+          p_related_trip_id?: string
+          p_reported_user_id: string
+        }
+        Returns: {
+          created_at: string
+          report_id: string
+        }[]
       }
       set_discovery_gender_preferences: {
         Args: { p_genders: string[] }
@@ -441,6 +559,7 @@ export type Database = {
           matched: boolean
         }[]
       }
+      unblock_user: { Args: { p_target_user_id: string }; Returns: boolean }
       unmatch: {
         Args: { p_match_id: string }
         Returns: {

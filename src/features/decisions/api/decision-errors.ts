@@ -3,6 +3,8 @@ export type DecisionErrorCode =
   | 'invalid_input'
   | 'user_not_found'
   | 'not_allowed'
+  /** The pair cannot interact (a block exists in either direction; never says which). */
+  | 'unavailable'
   | 'unexpected_response'
   | 'unknown';
 
@@ -17,7 +19,13 @@ export class DecisionError extends Error {
   }
 }
 
-export function toDecisionError(error: { code?: string }): DecisionError {
+/** Exact server message for a blocked pair (submit_decision, Phase 1M-F). */
+export const INTERACTION_UNAVAILABLE_MESSAGE = 'interaction unavailable';
+
+export function toDecisionError(error: { code?: string; message?: string }): DecisionError {
+  if (error.code === '42501' && error.message === INTERACTION_UNAVAILABLE_MESSAGE) {
+    return new DecisionError('unavailable', 'This person is unavailable.', { cause: error });
+  }
   switch (error.code) {
     case '22023':
       return new DecisionError('invalid_input', 'Decision was rejected.', { cause: error });

@@ -86,6 +86,13 @@ describe('decision api', () => {
     ).rejects.toMatchObject({ code: 'not_allowed' });
   });
 
+  it('maps a blocked pair to the generic unavailable code (no direction)', async () => {
+    useFake({ data: null, error: { code: '42501', message: 'interaction unavailable' } });
+    await expect(
+      submitDecision({ target_user_id: TARGET, decision: 'like' }),
+    ).rejects.toMatchObject({ code: 'unavailable' });
+  });
+
   it('rejects unexpected response shapes', async () => {
     useFake({ data: { matched: 'yes' }, error: null });
     await expect(

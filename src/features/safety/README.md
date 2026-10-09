@@ -1,12 +1,8 @@
 # features/safety
 
-Feature module (feature-first architecture, Mobile Technical Architecture v2 §5).
+Phase 1M-F split the safety data layer into two modules:
 
-Planned layout when implemented:
+- `src/features/blocks`: block / unblock (own outgoing blocks only)
+- `src/features/reports`: report a user (own submitted reports only)
 
-- `api/` — data access (Supabase queries/RPC) wrapped as TanStack Query hooks
-- `components/` — feature UI
-- `schemas/` — Zod schemas for this feature's inputs/DTOs
-- `hooks/`, `types.ts`
-
-Phase 0M: intentionally empty. No product logic yet.
+Safety UI (report sheet, block confirmation, safety center) belongs to a later phase.

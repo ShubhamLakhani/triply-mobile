@@ -445,6 +445,112 @@ lookups), `matches(user_high_id)` (the unique key covers `user_low_id`).
 Discovery (later) will exclude users the caller already decided about and any pair with a
 match row (active or unmatched). Blocking/reporting (1M-F) will hook into the same pair model.
 
+## Blocking + reporting (Phase 1M-F)
+
+Migration: `20261009112515_blocking_reporting.sql`. Tests:
+`supabase/tests/database/blocking_reporting.test.sql` (85 assertions).
+
+### `public.user_blocks` (directed)
+
+Primary key `(blocker_user_id, blocked_user_id)`, not-self check, `created_at`. No reason is
+stored (reasons belong in reports). A block is active until the blocker removes it.
+
+- **Privacy:** the only select policy is `auth.uid() = blocker_user_id`. A user can never read
+  who blocked them or anyone else's block list; no view or RPC returns reverse block state.
+- **Writes:** RPC only (`block_user`, `unblock_user`); no client insert/update/delete.
+
+### Blocking behaviour
+
+`block_user(target)` (idempotent):
+
+1. Inserts the caller's block (`on conflict do nothing`).
+2. Ends an active match for the pair in the same transaction, using the Phase 1M-E terminal
+   unmatch semantics (`unmatched_at = now()`, `unmatched_by = blocker`). The row is kept; an
+   already-unmatched row is left as it is.
+3. Keeps all decisions as history.
+
+To the other participant, a block-ended match looks exactly like an ordinary unmatch.
+
+`submit_decision` now rejects any decision while a block exists in **either** direction with
+one generic error, `42501 interaction unavailable` (mobile `DecisionError` code
+`unavailable`). The error is the same whichever side blocked, and the existing decision row is
+not changed. So no match can be created while a block exists, even from earlier reciprocal
+likes.
+
+Limitation: a user who knows they did not block someone can still infer from this error that
+the other side did. Future discovery must exclude blocked pairs in both directions so the
+client never offers that interaction (Safety Architecture §11).
+
+### Unblock semantics
+
+`unblock_user(target)` deletes only the caller's own row and returns whether one was removed
+(idempotent). It never reopens or creates a match, and never changes decisions, reports or
+unmatch history. A pair that was matched stays terminal (Phase 1M-E). For a pair that never
+matched, decisions work again, and a later like is matched against the other user's
+**current** decision. A like they made before the block still counts.
+
+### `public.user_reports`
+
+`id`, `reporter_user_id`, `reported_user_id`, `reason`, `details` (≤ 2000 chars, trimmed,
+blank → null), `related_match_id` / `related_trip_id` (`on delete set null`), `created_at`,
+`status` (`open` | `reviewed` | `actioned` | `dismissed`, default `open`).
+
+- **Reasons:** `harassment`, `spam`, `scam`, `inappropriate_content`, `impersonation`,
+  `underage_concern`, `safety_concern`, `other`.
+- **Privacy:** the reporter can read their own reports, and only the content columns
+  (column-level grant). `status` is not readable, so moderation outcomes are not revealed. The
+  reported user and third parties have no policy and see nothing. No report counts are
+  exposed.
+- **Status ownership:** there is no client write path. `report_user` has no status parameter.
+  Status changes are service_role / future moderation tooling only.
+- **Evidence integrity:** a trigger makes report content immutable even for privileged
+  writes. Only `status` may change, and the related ids may only be cleared by the FK.
+- **Duplicates:** multiple reports from the same reporter against the same user are allowed
+  (separate incidents, moderation history). There is no rate limit yet.
+- **Data minimisation:** text only. No uploads, screenshots, device data or IPs.
+
+`report_user(reported, reason, details?, related_match?, related_trip?)` validates the
+following, then returns `{ report_id, created_at }`:
+
+- the caller is signed in
+- the reason is valid
+- the reporter is not reporting themselves
+- the details length
+- the reported user exists (`P0002`)
+- the related match is the reporter's own match with the reported user (active or unmatched)
+- the related trip belongs to the reporter or the reported user (any status)
+
+Context failures return one generic error, `22023 invalid report context`. Reporting never
+looks at blocks, so it cannot be used to find out about blocks, and a blocked user can still
+report.
+
+### Concurrency
+
+`block_user` takes the same pair advisory lock as `submit_decision`. Either the block commits
+first (the like is rejected), or the match commits first and the block ends it. Verified ad
+hoc on Postgres 16:
+
+- 60 pairs where one side likes while the other blocks at the same time: 33 likes created a
+  match that the block then ended, and 27 likes were rejected. No active match was left with
+  a block, and there were no errors or deadlocks.
+- 15 identical concurrent blocks: 1 row.
+- 50 concurrent reports: 50 rows.
+
+### Indexes
+
+- `user_blocks_pkey`: own list and pair check.
+- `user_blocks_blocked_user_id_idx`: reverse check inside RPCs, and FK cascade.
+- `user_reports (reporter_user_id, created_at desc)`: reporter history.
+- `user_reports (reported_user_id, created_at desc)`: future moderation queue.
+
+### Later phases
+
+- Discovery must exclude blocked pairs in both directions, through a definer function.
+- Chat must check blocks.
+- Moderation tooling will own `status`, severity and protective actions.
+- Account-deletion retention for reports is still to be decided: reports currently cascade
+  with the profile.
+
 ## Seed data
 
 `seed.sql` holds development and staging **reference data only**. Right now that's two catalogs:
