@@ -32,6 +32,7 @@ export function createFakeSupabase(result: FakeResult) {
     update: record('update'),
     delete: record('delete'),
     eq: record('eq'),
+    or: record('or'),
     order: record('order'),
     single: settle('single'),
     maybeSingle: settle('maybeSingle'),
@@ -40,10 +41,8 @@ export function createFakeSupabase(result: FakeResult) {
   };
   const client = {
     from: (table: string) => (calls.push({ method: 'from', args: [table] }), builder),
-    rpc: async (fn: string, args: unknown) => {
-      calls.push({ method: 'rpc', args: [fn, args] });
-      return result;
-    },
+    // rpc() is chainable (e.g. `.rpc(...).single()`) and also awaitable directly.
+    rpc: (fn: string, args: unknown) => (calls.push({ method: 'rpc', args: [fn, args] }), builder),
   };
   return { client, calls };
 }

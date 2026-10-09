@@ -1,12 +1,8 @@
 # features/matching
 
-Feature module (feature-first architecture, Mobile Technical Architecture v2 §5).
+Superseded in Phase 1M-E by two feature modules:
 
-Planned layout when implemented:
+- `src/features/decisions`: like/pass via the `submit_decision` RPC
+- `src/features/matches`: own matches + `unmatch`
 
-- `api/` — data access (Supabase queries/RPC) wrapped as TanStack Query hooks
-- `components/` — feature UI
-- `schemas/` — Zod schemas for this feature's inputs/DTOs
-- `hooks/`, `types.ts`
-
-Phase 0M: intentionally empty. No product logic yet.
+Candidate discovery/ranking will live in `src/features/discovery` in a later phase.

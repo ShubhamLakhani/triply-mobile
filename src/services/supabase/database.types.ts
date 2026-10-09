@@ -153,6 +153,55 @@ export type Database = {
         }
         Relationships: []
       }
+      matches: {
+        Row: {
+          created_at: string
+          id: string
+          unmatched_at: string | null
+          unmatched_by: string | null
+          user_high_id: string
+          user_low_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          unmatched_at?: string | null
+          unmatched_by?: string | null
+          user_high_id: string
+          user_low_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          unmatched_at?: string | null
+          unmatched_by?: string | null
+          user_high_id?: string
+          user_low_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matches_unmatched_by_fkey"
+            columns: ["unmatched_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_user_high_id_fkey"
+            columns: ["user_high_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matches_user_low_id_fkey"
+            columns: ["user_low_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profile_interests: {
         Row: {
           created_at: string
@@ -282,6 +331,68 @@ export type Database = {
           },
         ]
       }
+      user_decisions: {
+        Row: {
+          actor_user_id: string
+          created_at: string
+          decision: string
+          id: string
+          source_trip_id: string | null
+          target_trip_id: string | null
+          target_user_id: string
+          updated_at: string
+        }
+        Insert: {
+          actor_user_id: string
+          created_at?: string
+          decision: string
+          id?: string
+          source_trip_id?: string | null
+          target_trip_id?: string | null
+          target_user_id: string
+          updated_at?: string
+        }
+        Update: {
+          actor_user_id?: string
+          created_at?: string
+          decision?: string
+          id?: string
+          source_trip_id?: string | null
+          target_trip_id?: string | null
+          target_user_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_decisions_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_decisions_source_trip_id_fkey"
+            columns: ["source_trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_decisions_target_trip_id_fkey"
+            columns: ["target_trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_decisions_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -313,6 +424,38 @@ export type Database = {
           to: "discovery_gender_preferences"
           isOneToOne: false
           isSetofReturn: true
+        }
+      }
+      submit_decision: {
+        Args: {
+          p_decision: string
+          p_source_trip_id?: string
+          p_target_trip_id?: string
+          p_target_user_id: string
+        }
+        Returns: {
+          decision: string
+          decision_id: string
+          match_created: boolean
+          match_id: string
+          matched: boolean
+        }[]
+      }
+      unmatch: {
+        Args: { p_match_id: string }
+        Returns: {
+          created_at: string
+          id: string
+          unmatched_at: string | null
+          unmatched_by: string | null
+          user_high_id: string
+          user_low_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "matches"
+          isOneToOne: true
+          isSetofReturn: false
         }
       }
     }

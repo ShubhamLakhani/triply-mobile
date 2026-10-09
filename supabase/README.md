@@ -384,6 +384,67 @@ read them server-side to:
 
 It will never expose another user's raw preference or selection rows.
 
+## Decisions + matching (Phase 1M-E)
+
+Migration: `20261009110512_decisions_matching.sql`. Tests:
+`supabase/tests/database/decisions_matching.test.sql` (54 assertions).
+
+### `public.user_decisions`
+
+One row per actor → target pair (`user_decisions_actor_target_key`), `decision` is `like` or
+`pass`, `actor_user_id <> target_user_id`. Optional `source_trip_id` / `target_trip_id` record
+the trip context (FK to `trips`, `on delete set null`). Changing a decision (pass → like or
+like → pass) updates the same row; the actor/target pair and `created_at` are immutable (trigger).
+
+- **Incoming decisions are never readable.** The only select policy is
+  `auth.uid() = actor_user_id`. There is no way to learn who liked you before a match.
+- No insert/update/delete grants or policies for `authenticated`; writes go through
+  `submit_decision` only.
+
+### `public.matches`
+
+Canonical pair: `user_low_id < user_high_id` (check), unique per pair (`matches_pair_key`).
+`unmatched_at` / `unmatched_by` record a terminal unmatch (`unmatched_by` must be a participant
+and requires `unmatched_at`). Participants can select their own matches; nobody can insert,
+update or delete directly. Participants and `created_at` are immutable, and an unmatched row
+cannot be changed or reopened (trigger, SQLSTATE `55000`).
+
+### RPCs (SECURITY DEFINER, `search_path = ''`, actor = `auth.uid()`)
+
+`submit_decision(p_target_user_id, p_decision, p_source_trip_id?, p_target_trip_id?)` returns
+`decision_id, decision, matched, match_id, match_created`:
+
+1. Rejects anonymous callers (`42501`), invalid input / self-decisions / foreign or cancelled
+   trip context (`22023`), unknown targets (`P0002`).
+2. Takes a transaction advisory lock on the canonical pair, so the two users' likes serialize.
+3. Upserts the caller's decision.
+4. If a match row already exists for the pair: reports `matched` = still active; an unmatched
+   pair stays unmatched (no rematch) and `match_id` is null. A later pass does **not**
+   implicitly unmatch — use `unmatch`.
+5. Otherwise, if this is a like and the reverse like exists, inserts the canonical match
+   (`on conflict do nothing`) in the same transaction.
+
+`unmatch(p_match_id)` sets `unmatched_at = now()`, `unmatched_by = auth.uid()` for a participant.
+Idempotent (a second call returns the existing row unchanged). Unknown or foreign matches
+return `P0002 match not found` (no existence leak).
+
+### Concurrency
+
+The pair advisory lock plus the unique constraints make match creation race-safe. Verified ad
+hoc on Postgres 16: 40 pairs liking each other simultaneously → exactly 40 matches, one
+`match_created = true` per pair, no errors or deadlocks; 10 concurrent identical likes → one
+decision row.
+
+### Indexes
+
+`user_decisions(target_user_id)` (reverse-like lookup / cascades; the unique key covers actor
+lookups), `matches(user_high_id)` (the unique key covers `user_low_id`).
+
+### Later phases
+
+Discovery (later) will exclude users the caller already decided about and any pair with a
+match row (active or unmatched). Blocking/reporting (1M-F) will hook into the same pair model.
+
 ## Seed data
 
 `seed.sql` holds development and staging **reference data only**. Right now that's two catalogs:
