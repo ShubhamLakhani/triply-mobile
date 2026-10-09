@@ -115,6 +115,96 @@ file in the same commit as the migration.
 `npm run migrations:check` (part of `npm run verify` and CI) enforces the file naming, RLS-in-same-
 migration, no-RLS-disable, no-secrets and no-DDL-in-seed rules statically.
 
+## Profiles (Phase 1M-B)
+
+Migration: `migrations/20261009092316_auth_profiles.sql`. Tests:
+`tests/database/profiles.test.sql`.
+
+### Schema
+
+`public.profiles` has one row per `auth.users` row. It holds user-facing fields only.
+Credentials, sessions and email stay in Supabase Auth.
+
+| Column                                      | Type        | Notes                                                              |
+| ------------------------------------------- | ----------- | ------------------------------------------------------------------ |
+| `id`                                        | uuid PK     | FK → `auth.users(id)` `on delete cascade`                          |
+| `first_name`                                | text        | ≤ 80 chars                                                         |
+| `date_of_birth`                             | date        | ≥ 1900-01-01, never in the future; age is never stored             |
+| `gender`                                    | text        | `man`, `woman`, `non_binary`, `other`, `prefer_not_to_say` (CHECK) |
+| `bio`                                       | text        | ≤ 1000 chars                                                       |
+| `home_city` / `home_country` / `occupation` | text        | ≤ 120 chars each                                                   |
+| `is_profile_complete`                       | boolean     | **database-maintained**                                            |
+| `is_discoverable`                           | boolean     | user preference, default `false`, guarded                          |
+| `created_at` / `updated_at`                 | timestamptz | database-controlled                                                |
+
+All text fields are trimmed by the database. An empty or whitespace-only value becomes `NULL`.
+
+### Lifecycle
+
+- **Creation:** `private.handle_new_user()` is an AFTER INSERT trigger on `auth.users`. It is
+  SECURITY DEFINER with `search_path = ''`. It inserts the profile `id` only, using
+  `on conflict do nothing`, so retries are safe. Auth metadata is **not** copied, because
+  clients can set it.
+- **Deletion:** deleting the auth user cascades to the profile. Clients cannot delete profiles
+  directly; account deletion comes later as a server-side flow.
+
+### Rules enforced by the database
+
+`private.profiles_before_write()` is a BEFORE INSERT/UPDATE trigger. It:
+
+- **Protects canonical columns:**
+  - rejects any change to `id`
+  - keeps the original `created_at`
+  - leaves `updated_at` to `private.set_updated_at()`
+  - always recomputes `is_profile_complete`
+- **Normalises text:** trims every text field and turns empty values into `NULL`.
+- **Validates date of birth:** a future `date_of_birth` raises SQLSTATE `23514`. This lives in
+  the trigger rather than a CHECK, because a CHECK using `current_date` is never re-evaluated.
+- **Computes completeness** with `private.profile_is_complete()`. A profile is complete when it
+  has a first name, a date of birth, the person is 18 or older, and a gender is set.
+  `private.is_adult()` treats `date_of_birth <= current_date - 18 years` (UTC) as adult.
+- **Guards discoverability:**
+  - Asking for `is_discoverable = true` on an incomplete or under-18 profile raises `23514`.
+  - An edit that makes a discoverable profile incomplete (for example, a DOB change to under
+    18 or removing gender) silently resets it to `false`.
+  - A CHECK constraint (`not is_discoverable or is_profile_complete`) backs this up even for
+    privileged writes.
+- **Known limitation:** completeness is evaluated at write time. Future discovery queries must
+  re-check eligibility when they read; never rely only on the stored flag.
+
+### Access
+
+| Role            | SELECT                               | UPDATE                               | INSERT / DELETE |
+| --------------- | ------------------------------------ | ------------------------------------ | --------------- |
+| `anon`          | ✗                                    | ✗                                    | ✗               |
+| `authenticated` | own row (RLS)                        | own row (RLS), editable columns only | ✗               |
+| `service_role`  | all (bypasses RLS; server code only) | all (trigger rules still apply)      | ✓               |
+
+- **Editable columns** (the column-level `GRANT UPDATE`): `first_name`, `date_of_birth`,
+  `gender`, `bio`, `home_city`, `home_country`, `occupation`, `is_discoverable`.
+- **Protected columns:** `id`, `created_at`, `updated_at`, `is_profile_complete`. Writing them
+  as a client fails with `42501`.
+- **No public reads:** there is no "everyone can read profiles" policy. Discovery-safe reads
+  of other users come in the discovery phase, through a dedicated, minimal surface.
+
+### Testing database policies
+
+```bash
+npx supabase test db   # authoritative: real local Supabase stack (Docker)
+npm run test:db        # fallback: plain PostgreSQL 15+ with pgTAP, no Docker
+```
+
+`npm run test:db` builds a throwaway cluster. It applies `scripts/db-test/supabase-shim.sql`
+(a minimal emulation of Supabase roles, `auth.users`, `auth.uid()` and default grants), then
+runs every migration and every `tests/database/*.test.sql`. To install the tools on macOS:
+`brew install postgresql@17 pgtap`, then set `PG_BIN=$(brew --prefix postgresql@17)/bin` if
+needed.
+
+### Recovery
+
+The migration header lists the manual rollback statements. Once real users exist, prefer a
+forward-fix migration over a rollback.
+
 ## Seed data
 
 `seed.sql` runs only against the local stack (`supabase start`, `supabase db reset`). It is never

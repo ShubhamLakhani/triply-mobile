@@ -1,12 +1,14 @@
 # features/profile
 
-Feature module (feature-first architecture, Mobile Technical Architecture v2 §5).
+Own-profile data layer over `public.profiles` (see `supabase/README.md → Profiles`).
 
-Planned layout when implemented:
+- `api/profile-api.ts`: `fetchOwnProfile(userId)`, `updateOwnProfile(userId, input)`
+  (explicit column list; validated editable fields only)
+- `api/profile-keys.ts`: `profileKeys.own(userId)`. Profile server state lives only in TanStack Query
+- `api/profile-errors.ts`: `ProfileError` with stable codes mapped from Postgres/PostgREST
+- `hooks/use-own-profile.ts`: `useCurrentProfile()`, `useOwnProfile(userId)`, `useUpdateProfile(userId)`
+- `schemas/profile.schema.ts`: Zod schema for editable fields (UX mirror of database rules)
+- `age.ts`: client mirror of `private.is_adult()` for instant feedback
 
-- `api/` — data access (Supabase queries/RPC) wrapped as TanStack Query hooks
-- `components/` — feature UI
-- `schemas/` — Zod schemas for this feature's inputs/DTOs
-- `hooks/`, `types.ts`
-
-Phase 0M: intentionally empty. No product logic yet.
+The database is authoritative for completeness, the 18+ rule and discoverability.
+`is_profile_complete` is read-only for the app.

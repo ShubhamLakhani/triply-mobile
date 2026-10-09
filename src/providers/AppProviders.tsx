@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { AppEnv } from '@/config/env';
+import { registerAuthCacheReset } from '@/features/auth/api/auth-cache';
 import { AnalyticsProvider, createAppAnalytics } from '@/services/analytics';
 import { configureNotificationHandling } from '@/services/notifications';
 import { createQueryClient, setupQueryManagers } from '@/services/query';
@@ -25,6 +26,8 @@ export function AppProviders({ env, children }: AppProvidersProps) {
 
   useEffect(() => setupQueryManagers(), []);
   useEffect(() => registerSupabaseAutoRefresh(), []);
+  // Sign-out must not leave the previous account's server state in memory.
+  useEffect(() => registerAuthCacheReset(queryClient), [queryClient]);
   useEffect(() => {
     // Foreground presentation policy only — this never prompts for permission.
     configureNotificationHandling();

@@ -17,6 +17,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:ci": "jest --ci --coverage=false",
+    "test:db": "bash scripts/db-test/run.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "config:check": "node scripts/check-expo-config.mjs",
@@ -36,7 +37,8 @@
     "supabase:reset": "supabase db reset --local",
     "supabase:migration:new": "supabase migration new",
     "supabase:types": "node scripts/generate-db-types.mjs linked",
-    "supabase:types:local": "node scripts/generate-db-types.mjs local"
+    "supabase:types:local": "node scripts/generate-db-types.mjs local",
+    "supabase:test": "supabase test db"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
