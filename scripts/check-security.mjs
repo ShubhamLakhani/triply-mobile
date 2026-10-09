@@ -13,13 +13,16 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const ROOT = process.cwd();
-const SCAN_DIRS = ['app', 'src', 'scripts', 'tests', '.github', 'supabase'];
+// docs/ is scanned read-only (Phase 1M-H): secrets must not hide in documentation either.
+const SCAN_DIRS = ['app', 'src', 'scripts', 'tests', '.github', 'supabase', 'docs'];
 const SCAN_ROOT_FILES = [
   'app.config.ts',
   'eas.json',
   'package.json',
   '.env.example',
   'metro.config.js',
+  'README.md',
+  'SECURITY.md',
 ];
 const SCAN_EXTENSIONS = /\.(ts|tsx|js|mjs|cjs|json|ya?ml|md|sql|toml)$|^\.env\.example$/;
 const SELF = 'scripts/check-security.mjs';

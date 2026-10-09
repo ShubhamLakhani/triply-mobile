@@ -93,6 +93,13 @@ describe('decision api', () => {
     ).rejects.toMatchObject({ code: 'unavailable' });
   });
 
+  it('maps an incomplete own profile to profile_incomplete', async () => {
+    useFake({ data: null, error: { code: '42501', message: 'complete your profile first' } });
+    await expect(
+      submitDecision({ target_user_id: TARGET, decision: 'like' }),
+    ).rejects.toMatchObject({ code: 'profile_incomplete' });
+  });
+
   it('rejects unexpected response shapes', async () => {
     useFake({ data: { matched: 'yes' }, error: null });
     await expect(

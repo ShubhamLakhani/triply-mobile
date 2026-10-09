@@ -667,6 +667,29 @@ Other users' photos are not readable in this phase. Discovery will expose them t
 controlled, block-aware server layer that creates signed URLs on the server for eligible
 profiles only. The bucket stays private.
 
+## Security hardening (Phase 1M-H)
+
+Migration: `20261009122115_security_rls_hardening.sql`. Tests:
+`supabase/tests/database/security_audit.test.sql`. The full audit, test matrix and deferred
+risks are in `SECURITY.md`.
+
+- **Age gate on decisions.** `submit_decision` now requires both profiles to be complete,
+  which means 18+:
+  - an incomplete caller gets `42501 complete your profile first`;
+  - an incomplete target gets the generic `42501 interaction unavailable`, the same error as
+    a blocked pair.
+
+  Blocking and reporting are unchanged and open to every signed-in user.
+
+- **Serialised replacements.** `replace_profile_interests` and
+  `set_discovery_gender_preferences` take a per-user advisory lock. Overlapping calls from the
+  same user now apply in order; before, they could fail with a duplicate-key error or leave
+  the union of both requested sets.
+- **Migration guard.** `npm run migrations:check` now also fails when:
+  - a public table does not revoke Supabase's default grants;
+  - a public or private function does not revoke execute from `public`;
+  - a SECURITY DEFINER function lacks `search_path = ''`.
+
 ## Seed data
 
 `seed.sql` holds development and staging **reference data only**. Right now that's two catalogs:

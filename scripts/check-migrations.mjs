@@ -11,6 +11,12 @@
  *  6. seed.sql only writes approved catalog tables (destinations, interests); never users,
  *     profiles, trips, selections, preferences or other personal data
  *     and every INSERT is idempotent (ON CONFLICT).
+ *  7. Fail-closed privileges (Phase 1M-H). Supabase's default privileges grant every new
+ *     public table and function to anon/authenticated, so each migration must opt out:
+ *     - every public table is followed by `revoke all on table public.<t> from ... anon ...`;
+ *     - every public/private function is covered by `revoke all on function <schema>.<f>(`
+ *       ... `from public` in the same or an earlier migration;
+ *     - every SECURITY DEFINER function sets `search_path = ''`.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -28,6 +34,8 @@ function stripComments(sql) {
 const failures = [];
 const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql'));
 const seenTimestamps = new Map();
+// Functions whose PUBLIC execute has been revoked so far (CREATE OR REPLACE keeps grants).
+const revokedFunctions = new Set();
 
 for (const file of files.sort()) {
   const match = FILENAME.exec(file);
@@ -62,6 +70,40 @@ for (const file of files.sort()) {
       failures.push(
         `${file}: ${schema}.${table} is created without enabling RLS in the same migration`,
       );
+    }
+  }
+
+  for (const { schema, table } of created) {
+    if (!EXPOSED_SCHEMAS.includes(schema)) continue;
+    const revoke = new RegExp(
+      `revoke\\s+all\\s+on\\s+(?:table\\s+)?${schema}\\.${table}\\s+from\\s+[^;]*\\banon\\b`,
+    );
+    if (!revoke.test(sql)) {
+      failures.push(
+        `${file}: ${schema}.${table} must revoke Supabase's default grants (revoke all on table ${schema}.${table} from public, anon, authenticated)`,
+      );
+    }
+  }
+
+  for (const m of sql.matchAll(
+    /revoke\s+all\s+on\s+function\s+(\w+)\.(\w+)\s*\([^;]*?\bfrom\s+([^;]*)/g,
+  )) {
+    if (/\bpublic\b/.test(m[3])) revokedFunctions.add(`${m[1]}.${m[2]}`);
+  }
+  const statements = sql.split(/;\s*(?=create|revoke|grant|alter|comment|insert|drop|$)/);
+  for (const m of sql.matchAll(/create\s+(?:or\s+replace\s+)?function\s+(\w+)\.(\w+)\s*\(/g)) {
+    const [, schema, name] = m;
+    if (!['public', 'private'].includes(schema)) continue;
+    if (!revokedFunctions.has(`${schema}.${name}`)) {
+      failures.push(
+        `${file}: ${schema}.${name}() must revoke execute from public (revoke all on function ${schema}.${name}(...) from public, anon[, authenticated])`,
+      );
+    }
+  }
+  for (const stmt of statements) {
+    const fn = /create\s+(?:or\s+replace\s+)?function\s+([\w.]+)/.exec(stmt);
+    if (fn && /\bsecurity\s+definer\b/.test(stmt) && !/set\s+search_path\s*=\s*''/.test(stmt)) {
+      failures.push(`${file}: SECURITY DEFINER function ${fn[1]} must set search_path = ''`);
     }
   }
 

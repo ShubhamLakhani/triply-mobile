@@ -21,6 +21,11 @@ values
   ('30000000-0000-4000-8000-00000000000c', 'match-c@example.test'),
   ('40000000-0000-4000-8000-00000000000d', 'match-d@example.test');
 
+-- Phase 1M-H: decisions require complete (18+) profiles.
+update public.profiles
+   set first_name = 'Test', gender = 'woman', date_of_birth = date '1990-01-01'
+ where id in ('10000000-0000-4000-8000-00000000000a', '20000000-0000-4000-8000-00000000000b', '30000000-0000-4000-8000-00000000000c', '40000000-0000-4000-8000-00000000000d');
+
 insert into public.destinations (id, slug, city_name, country_name, country_code)
 values ('d1000000-0000-4000-8000-000000000001', 'test-match-town', 'Match Town', 'Testland', 'TL');
 

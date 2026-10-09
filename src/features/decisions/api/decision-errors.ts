@@ -5,6 +5,8 @@ export type DecisionErrorCode =
   | 'not_allowed'
   /** The pair cannot interact (a block exists in either direction; never says which). */
   | 'unavailable'
+  /** The caller's own profile is not complete (18+ gate), Phase 1M-H. */
+  | 'profile_incomplete'
   | 'unexpected_response'
   | 'unknown';
 
@@ -22,9 +24,17 @@ export class DecisionError extends Error {
 /** Exact server message for a blocked pair (submit_decision, Phase 1M-F). */
 export const INTERACTION_UNAVAILABLE_MESSAGE = 'interaction unavailable';
 
+/** Exact server message when the caller's profile is incomplete (submit_decision, Phase 1M-H). */
+export const PROFILE_INCOMPLETE_MESSAGE = 'complete your profile first';
+
 export function toDecisionError(error: { code?: string; message?: string }): DecisionError {
   if (error.code === '42501' && error.message === INTERACTION_UNAVAILABLE_MESSAGE) {
     return new DecisionError('unavailable', 'This person is unavailable.', { cause: error });
+  }
+  if (error.code === '42501' && error.message === PROFILE_INCOMPLETE_MESSAGE) {
+    return new DecisionError('profile_incomplete', 'Complete your profile first.', {
+      cause: error,
+    });
   }
   switch (error.code) {
     case '22023':

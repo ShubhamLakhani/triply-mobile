@@ -26,6 +26,11 @@ values
   ('4f000000-0000-4000-8000-00000000000d', 'safety-d@example.test'),
   ('5f000000-0000-4000-8000-00000000000e', 'safety-e@example.test');
 
+-- Phase 1M-H: decisions require complete (18+) profiles.
+update public.profiles
+   set first_name = 'Test', gender = 'woman', date_of_birth = date '1990-01-01'
+ where id in ('1f000000-0000-4000-8000-00000000000a', '2f000000-0000-4000-8000-00000000000b', '3f000000-0000-4000-8000-00000000000c', '4f000000-0000-4000-8000-00000000000d', '5f000000-0000-4000-8000-00000000000e');
+
 insert into public.destinations (id, slug, city_name, country_name, country_code)
 values ('d2000000-0000-4000-8000-000000000001', 'test-safety-town', 'Safety Town', 'Testland', 'TL');
 
