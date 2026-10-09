@@ -19,32 +19,49 @@ export interface FakeStorageResults {
   createSignedUrl?: FakeResult;
 }
 
-export function createFakeSupabase(result: FakeResult, storageResults: FakeStorageResults = {}) {
+/**
+ * Result for a query chain. Either one fixed result for every chain, or a resolver keyed by the
+ * chain's target: the table name for `from(table)`, or `rpc:<fn>` for `rpc(fn)`.
+ */
+export type FakeResultSource = FakeResult | ((target: string) => FakeResult);
+
+export function createFakeSupabase(
+  result: FakeResultSource,
+  storageResults: FakeStorageResults = {},
+) {
   const calls: RecordedCall[] = [];
-  const record =
-    (method: string) =>
-    (...args: unknown[]) => {
-      calls.push({ method, args });
-      return builder;
+  const resolve = (target: string): FakeResult =>
+    typeof result === 'function' ? result(target) : result;
+
+  // Each from()/rpc() starts its own chain, so concurrent queries never share state.
+  const chain = (target: string) => {
+    const record =
+      (method: string) =>
+      (...args: unknown[]) => {
+        calls.push({ method, args });
+        return builder;
+      };
+    const settle =
+      (method: string) =>
+      async (...args: unknown[]) => {
+        calls.push({ method, args });
+        return resolve(target);
+      };
+    const builder = {
+      select: record('select'),
+      insert: record('insert'),
+      update: record('update'),
+      delete: record('delete'),
+      eq: record('eq'),
+      or: record('or'),
+      order: record('order'),
+      single: settle('single'),
+      maybeSingle: settle('maybeSingle'),
+      // Awaiting the builder directly (list queries) resolves to the result.
+      then: (onFulfilled: (value: FakeResult) => unknown) =>
+        Promise.resolve(resolve(target)).then(onFulfilled),
     };
-  const settle =
-    (method: string) =>
-    async (...args: unknown[]) => {
-      calls.push({ method, args });
-      return result;
-    };
-  const builder = {
-    select: record('select'),
-    insert: record('insert'),
-    update: record('update'),
-    delete: record('delete'),
-    eq: record('eq'),
-    or: record('or'),
-    order: record('order'),
-    single: settle('single'),
-    maybeSingle: settle('maybeSingle'),
-    // Awaiting the builder directly (list queries) resolves to the result.
-    then: (resolve: (value: FakeResult) => unknown) => Promise.resolve(result).then(resolve),
+    return builder;
   };
   const storageCall =
     (bucket: string, method: keyof FakeStorageResults, fallback: FakeResult) =>
@@ -65,9 +82,12 @@ export function createFakeSupabase(result: FakeResult, storageResults: FakeStora
         }),
       }),
     },
-    from: (table: string) => (calls.push({ method: 'from', args: [table] }), builder),
+    from: (table: string) => (calls.push({ method: 'from', args: [table] }), chain(table)),
     // rpc() is chainable (e.g. `.rpc(...).single()`) and also awaitable directly.
-    rpc: (fn: string, args: unknown) => (calls.push({ method: 'rpc', args: [fn, args] }), builder),
+    rpc: (fn: string, args: unknown) => (
+      calls.push({ method: 'rpc', args: [fn, args] }),
+      chain(`rpc:${fn}`)
+    ),
   };
   return { client, calls };
 }
