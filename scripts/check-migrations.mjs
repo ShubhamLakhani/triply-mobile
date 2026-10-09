@@ -8,6 +8,8 @@
  *  3. Row level security is never disabled.
  *  4. No secrets / service-role material in SQL.
  *  5. seed.sql contains no DDL (schema belongs in migrations).
+ *  6. seed.sql only writes reference tables (no users, profiles, trips or other personal data)
+ *     and every INSERT is idempotent (ON CONFLICT).
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -72,6 +74,26 @@ for (const file of files.sort()) {
 const seed = stripComments(readFileSync(SEED_FILE, 'utf8')).toLowerCase();
 if (/\b(create|alter|drop)\s+(table|schema|function|policy|type|extension)\b/.test(seed)) {
   failures.push('supabase/seed.sql: contains DDL — schema changes belong in migrations');
+}
+
+const SEED_WRITABLE_TABLES = ['public.destinations'];
+// `on conflict ... do update set` is part of an upsert, not a separate UPDATE statement.
+const seedWrites =
+  /\b(?:insert\s+into|(?<!\bdo\s+)update|delete\s+from|truncate(?:\s+table)?)\s+([\w."]+)/g;
+for (const m of seed.matchAll(seedWrites)) {
+  const target = m[1].replace(/"/g, '');
+  const qualified = target.includes('.') ? target : `public.${target}`;
+  if (!SEED_WRITABLE_TABLES.includes(qualified)) {
+    failures.push(
+      `supabase/seed.sql: writes ${qualified} — seed may only write ${SEED_WRITABLE_TABLES.join(', ')}`,
+    );
+  }
+}
+const inserts = seed.split(';').filter((stmt) => /\binsert\s+into\b/.test(stmt));
+for (const stmt of inserts) {
+  if (!/\bon\s+conflict\b/.test(stmt)) {
+    failures.push('supabase/seed.sql: every INSERT must be idempotent (ON CONFLICT ...)');
+  }
 }
 
 if (failures.length > 0) {

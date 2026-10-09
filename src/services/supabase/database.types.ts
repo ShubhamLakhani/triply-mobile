@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      destinations: {
+        Row: {
+          active: boolean
+          city_name: string
+          country_code: string
+          country_name: string
+          created_at: string
+          hero_image_url: string | null
+          id: string
+          latitude: number | null
+          longitude: number | null
+          slug: string
+          timezone: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          city_name: string
+          country_code: string
+          country_name: string
+          created_at?: string
+          hero_image_url?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          slug: string
+          timezone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          city_name?: string
+          country_code?: string
+          country_name?: string
+          created_at?: string
+          hero_image_url?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          slug?: string
+          timezone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           bio: string | null
@@ -58,6 +103,57 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      trips: {
+        Row: {
+          created_at: string
+          destination_id: string
+          end_date: string
+          id: string
+          start_date: string
+          status: string
+          updated_at: string
+          user_id: string
+          visibility: string
+        }
+        Insert: {
+          created_at?: string
+          destination_id: string
+          end_date: string
+          id?: string
+          start_date: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+          visibility?: string
+        }
+        Update: {
+          created_at?: string
+          destination_id?: string
+          end_date?: string
+          id?: string
+          start_date?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trips_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: false
+            referencedRelation: "destinations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trips_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

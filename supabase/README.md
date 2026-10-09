@@ -205,7 +205,104 @@ needed.
 The migration header lists the manual rollback statements. Once real users exist, prefer a
 forward-fix migration over a rollback.
 
+## Destinations + trips (Phase 1M-C)
+
+Migration: `migrations/20261009101052_destinations_trips.sql`. Tests:
+`tests/database/destinations_trips.test.sql` and `tests/database/seed.test.sql`.
+
+Triply is trip-centric: users plan trips like "Bali, 4–12 Dec". The schema stores no live or
+precise user location.
+
+### `public.destinations` (catalog)
+
+| Column                      | Rules                                                           |
+| --------------------------- | --------------------------------------------------------------- |
+| `slug`                      | unique, 2–80 chars, lowercase URL-safe (`bali`, `buenos-aires`) |
+| `city_name`, `country_name` | trimmed, 1–120 chars                                            |
+| `country_code`              | exactly two uppercase letters (ISO 3166-1 alpha-2)              |
+| `latitude` / `longitude`    | optional city centroid, within range, both or neither           |
+| `timezone`                  | optional IANA-style name (`Asia/Makassar`)                      |
+| `hero_image_url`            | optional `https://` URL                                         |
+| `active`                    | default `true`; inactive rows are hidden from clients           |
+
+- **Reads:** signed-in users can read **active** destinations only. Logged-out users (`anon`)
+  have no access.
+- **Writes:** only migrations, the seed or server tooling (`service_role`) can write the catalog.
+
+### `public.trips`
+
+| Column                   | Rules                                                                                              |
+| ------------------------ | -------------------------------------------------------------------------------------------------- |
+| `user_id`                | FK → `profiles(id)` `on delete cascade`, defaults to `auth.uid()`, immutable                       |
+| `destination_id`         | FK → `destinations(id)` `on delete restrict`; must be **active** when the trip is created or moved |
+| `start_date`, `end_date` | `date`, both required, `end_date >= start_date`; sanity bounds 2000-01-01 … 2100-12-31             |
+| `status`                 | `planned` (default), `active`, `completed`, `cancelled`                                            |
+| `visibility`             | `discoverable` (default) or `hidden`, chosen by the owner                                          |
+
+- **Past trips are allowed.** History may matter later; discovery will filter to relevant trips.
+- **No limits on repeats or length:** there is no maximum trip length and no uniqueness rule on
+  destination or dates.
+- **Status:**
+  - The app may only move a trip to `cancelled`. It can't choose the initial status: new trips
+    always start as `planned`.
+  - `active` and `completed` are reserved for future server-side automation (`service_role`).
+  - `cancelled` is **terminal**: a cancelled trip can't be edited or reopened. Cancelling it
+    again is a no-op.
+- **Cancel, don't delete:** the app has no DELETE grant or policy for trips. Trips are removed
+  only when their owner's account is deleted (cascade).
+- **Destination deactivated later:** existing trips keep their destination, but the client can no
+  longer see it. In the app, `trip.destination` is `null` in that case.
+- **Protected columns:**
+  - `id`, `user_id`, `created_at` and `updated_at` aren't in the column-level grants.
+  - `private.trips_before_write()` also rejects owner or id changes for privileged writes, and
+    keeps `created_at` intact.
+
+### Access
+
+| Role            | destinations       | trips                                                                                                                                                                                                                  |
+| --------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `anon`          | ✗                  | ✗                                                                                                                                                                                                                      |
+| `authenticated` | SELECT active rows | SELECT / INSERT / UPDATE **own rows only**. INSERT columns: `user_id` (must be self), `destination_id`, dates, `visibility`. UPDATE columns: `destination_id`, dates, `status` (cancel only), `visibility`. No DELETE. |
+| `service_role`  | all                | all (trigger rules still apply)                                                                                                                                                                                        |
+
+There are no broad SELECT policies on trips: no client can list other users' trips.
+
+### Indexes
+
+- **`trips_user_id_start_date_idx`:** the owner's trip list, ordered by date. It also serves the
+  `user_id` cascade.
+- **`trips_destination_id_idx`:** the destination FK (restrict checks, admin queries).
+- **`trips_discovery_idx`:** partial `(destination_id, start_date, end_date)` covering only
+  `visibility = 'discoverable'` trips in `planned` / `active` status. It's for future "same
+  place, overlapping dates" lookups.
+- **Deliberately left out:** separate status and visibility indexes. Those columns have few
+  distinct values and are covered by the partial index's filter.
+
+### How discovery will use trips (later phase)
+
+Discovery will **not** widen these policies. It will use a SECURITY DEFINER RPC or view that
+returns only discovery-safe fields for trips where all of the following hold:
+
+- `visibility = 'discoverable'`
+- `status in ('planned', 'active')`
+- `end_date >= current_date`
+- the owner's profile is discoverable and the owner is still an adult, re-checked when the
+  data is read
+
+Hidden and cancelled trips are never eligible.
+
 ## Seed data
 
-`seed.sql` runs only against the local stack (`supabase start`, `supabase db reset`). It is never
-applied by `db push`. It contains no fake users or product data yet.
+`seed.sql` holds development and staging **reference data only**. Right now that's the starter
+destination catalog: Bali, Bangkok, Dubai, Barcelona, Paris and Lisbon.
+
+- **Local stack:** applied automatically on `supabase start` and `supabase db reset`.
+- **Triply Development:** applied only on explicit request:
+  `npx supabase db push --include-seed`, while linked to Triply Development.
+- **Production:** never. Production reference data ships through reviewed migrations or
+  server tooling.
+- **Idempotent:** every insert upserts on a stable key (`destinations.slug`), so re-running it
+  never duplicates rows. `npm run test:db` applies it twice to prove this.
+- **No personal data:** no users, profiles or trips. `npm run migrations:check` fails if the
+  seed writes any table other than `public.destinations`, or if an insert lacks
+  `ON CONFLICT`.

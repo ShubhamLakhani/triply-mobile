@@ -1,12 +1,10 @@
 # features/destinations
 
-Feature module (feature-first architecture, Mobile Technical Architecture v2 §5).
+Read-only destination catalog (`public.destinations`; see `supabase/README.md → Destinations + trips`).
 
-Planned layout when implemented:
+- `api/destination-api.ts`: `fetchActiveDestinations()`, `fetchDestinationBySlug(slug)`, `DESTINATION_COLUMNS`
+- `api/destination-keys.ts`: `destinationKeys.list()` / `.detail(slug)`
+- `hooks/use-destinations.ts`: `useDestinations()`, `useDestination(slug)` (1-hour stale time)
+- `types.ts`: `Destination`, `DestinationSummary` (derived from generated types)
 
-- `api/` — data access (Supabase queries/RPC) wrapped as TanStack Query hooks
-- `components/` — feature UI
-- `schemas/` — Zod schemas for this feature's inputs/DTOs
-- `hooks/`, `types.ts`
-
-Phase 0M: intentionally empty. No product logic yet.
+Clients only ever see active destinations. Writes happen through migrations, seed or server tooling.

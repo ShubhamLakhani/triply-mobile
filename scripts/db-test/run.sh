@@ -42,6 +42,11 @@ for migration in "$ROOT"/supabase/migrations/*.sql; do
   "${PSQL[@]}" -f "$migration" >/dev/null
 done
 
+# Applied twice on purpose: the seed must be idempotent (verified by seed.test.sql).
+echo "→ seed.sql (x2)"
+"${PSQL[@]}" -f "$ROOT/supabase/seed.sql" >/dev/null
+"${PSQL[@]}" -f "$ROOT/supabase/seed.sql" >/dev/null
+
 status=0
 for test in "$ROOT"/supabase/tests/database/*.test.sql; do
   echo "→ test $(basename "$test")"
