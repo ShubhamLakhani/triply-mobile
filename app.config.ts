@@ -63,7 +63,8 @@ export function resolveAppVariant(raw: string | undefined): AppVariant {
 }
 
 /**
- * Build-time guard: non-production variants must never point at the production Supabase project.
+ * Build-time guard, both directions: development/preview must never point at the production
+ * Supabase project, and production must point at it.
  * Active once TRIPLY_PRODUCTION_SUPABASE_REF is configured (Phase 1M creates the projects).
  */
 export function assertBackendMatchesVariant(
@@ -71,11 +72,18 @@ export function assertBackendMatchesVariant(
   supabaseUrl: string | undefined,
   productionRef: string | undefined,
 ): void {
-  if (variant === 'production' || !supabaseUrl || !productionRef) return;
-  if (supabaseUrl.includes(productionRef)) {
+  if (!supabaseUrl || !productionRef) return;
+  const pointsAtProduction = supabaseUrl.includes(productionRef);
+  if (variant !== 'production' && pointsAtProduction) {
     throw new Error(
       `[app.config] APP_VARIANT=${variant} is configured with the PRODUCTION Supabase project. ` +
         'Preview/development builds must use staging or local backends.',
+    );
+  }
+  if (variant === 'production' && !pointsAtProduction) {
+    throw new Error(
+      '[app.config] APP_VARIANT=production is configured with a NON-production Supabase project. ' +
+        'Production builds must use the production project (TRIPLY_PRODUCTION_SUPABASE_REF).',
     );
   }
 }

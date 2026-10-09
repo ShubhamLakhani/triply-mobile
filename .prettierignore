@@ -6,3 +6,6 @@ ios/
 android/
 coverage/
 package-lock.json
+src/services/supabase/database.types.ts
+supabase/.temp/
+supabase/.branches/

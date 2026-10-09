@@ -65,6 +65,7 @@ npm test               # Jest + React Native Testing Library
 npm run test:watch
 npm run format:check   # Prettier (npm run format to fix)
 npm run security:check # secret scan, EXPO_PUBLIC allowlist, committed .env files
+npm run migrations:check # Supabase migration conventions (naming, RLS, no secrets)
 npm run config:check   # evaluates app.config.ts for all three variants
 npm run doctor         # expo-doctor
 npm run verify         # everything above except doctor
@@ -80,8 +81,8 @@ There are three variants, selected by `APP_VARIANT`:
 
 | Variant     | Bundle ID / package          | Scheme           | Backend         | EAS profile                            |
 | ----------- | ---------------------------- | ---------------- | --------------- | -------------------------------------- |
-| development | `cc.toolmint.triply.dev`     | `triply-dev`     | local / staging | `development`, `development-simulator` |
-| preview     | `cc.toolmint.triply.preview` | `triply-preview` | **staging**     | `preview`                              |
+| development | `cc.toolmint.triply.dev`     | `triply-dev`     | local / dev     | `development`, `development-simulator` |
+| preview     | `cc.toolmint.triply.preview` | `triply-preview` | **dev/staging** | `preview`                              |
 | production  | `cc.toolmint.triply`         | `triply`         | production      | `production`                           |
 
 All three can be installed side by side, and deep links can't open the wrong build.
@@ -92,8 +93,11 @@ All three can be installed side by side, and deep links can't open the wrong bui
 - **Validation:** `src/config/env.ts` validates every public value with Zod at launch. A missing
   or unsafe value shows a clear configuration error screen instead of failing later. Supabase
   secret / service-role keys are rejected outright.
-- **Guard:** set `TRIPLY_PRODUCTION_SUPABASE_REF` in the dev/preview environments, and the build
-  refuses to point a non-production variant at the production Supabase project.
+- **Guard:** set `TRIPLY_PRODUCTION_SUPABASE_REF` (the production project ref) in every
+  environment. Development/preview builds then refuse the production Supabase project, and
+  production builds refuse any other project.
+- **Database:** migrations, local stack, linking and type generation are documented in
+  [`supabase/README.md`](./supabase/README.md).
 
 Public (bundled) variables: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`,
 `EXPO_PUBLIC_POSTHOG_KEY`, `EXPO_PUBLIC_POSTHOG_HOST`, `EXPO_PUBLIC_ANALYTICS_ENABLED`,
@@ -155,7 +159,7 @@ src/
   features/<feature>/    Feature modules (api/, components/, schemas/, hooks/), filled from Phase 1M
   components/ui|feedback|layout   Small internal primitives (AppText, AppButton, AppScreen, LoadingState…)
   services/              Single owners of vendor SDKs:
-    supabase/            The one Supabase client + AppState auto-refresh
+    supabase/            The one typed Supabase client, AppState auto-refresh, CLI-generated database.types.ts
     storage/             Device storage (expo-sqlite localStorage for the auth session)
     query/               QueryClient defaults + focus/online managers
     observability/       Sentry init, scrubbing, captureError
@@ -166,7 +170,7 @@ src/
   theme/                 Design tokens: colors, spacing, radius, typography, motion, shadows
   hooks/ stores/ schemas/ types/ constants/ utils/
 assets/                  Placeholder brand assets (replace before distribution)
-supabase/migrations/     Database migrations (from Phase 1M)
+supabase/                Supabase CLI config, migrations, local seed (see supabase/README.md)
 scripts/                 security + config check scripts
 tests/                   Jest setup, shared test utils, navigation tests, Maestro E2E
 ```

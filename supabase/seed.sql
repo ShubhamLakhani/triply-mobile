@@ -1,0 +1,18 @@
+-- =============================================================================
+-- Triply · seed.sql
+-- =============================================================================
+--
+-- Runs ONLY against the LOCAL Supabase stack, after migrations, on
+-- `npx supabase start` (first run) and `npx supabase db reset`.
+-- It is never applied by `supabase db push`, so it cannot reach staging or
+-- production.
+--
+-- Rules
+--   * Development data only. Never real user data, emails or photos.
+--   * No schema changes here. Schema belongs in supabase/migrations/.
+--   * Keep it idempotent (`on conflict do nothing`) so resets stay clean.
+--   * Phase 1M-A intentionally seeds nothing: no fake users and no product
+--     catalog yet. Reference data (e.g. canonical destination markets) will be
+--     added in the phase that introduces those tables.
+-- =============================================================================
+

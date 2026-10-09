@@ -61,4 +61,14 @@ describe('app.config.ts', () => {
       assertBackendMatchesVariant('preview', 'https://stagingref.supabase.co', 'prodref123'),
     ).not.toThrow();
   });
+
+  it('blocks production builds from using a non-production backend', () => {
+    expect(() =>
+      assertBackendMatchesVariant('production', 'https://stagingref.supabase.co', 'prodref123'),
+    ).toThrow(/NON-production Supabase project/);
+    // Guard stays inactive until the production ref is configured.
+    expect(() =>
+      assertBackendMatchesVariant('production', 'https://stagingref.supabase.co', undefined),
+    ).not.toThrow();
+  });
 });

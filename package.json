@@ -21,14 +21,22 @@
     "format:check": "prettier --check .",
     "config:check": "node scripts/check-expo-config.mjs",
     "security:check": "node scripts/check-security.mjs",
+    "migrations:check": "node scripts/check-migrations.mjs",
     "doctor": "expo-doctor",
     "export:ios": "expo export --platform ios --output-dir dist/ios",
     "export:android": "expo export --platform android --output-dir dist/android",
-    "verify": "npm run lint && npm run typecheck && npm run test:ci && npm run format:check && npm run security:check && npm run config:check",
+    "verify": "npm run lint && npm run typecheck && npm run test:ci && npm run format:check && npm run security:check && npm run migrations:check && npm run config:check",
     "build:dev:ios-sim": "eas build --profile development-simulator --platform ios",
     "build:dev:ios": "eas build --profile development --platform ios",
     "build:dev:android": "eas build --profile development --platform android",
-    "build:preview": "eas build --profile preview --platform all"
+    "build:preview": "eas build --profile preview --platform all",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status",
+    "supabase:reset": "supabase db reset --local",
+    "supabase:migration:new": "supabase migration new",
+    "supabase:types": "node scripts/generate-db-types.mjs linked",
+    "supabase:types:local": "node scripts/generate-db-types.mjs local"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
@@ -78,6 +86,7 @@
     "jest": "~29.7.0",
     "jest-expo": "~57.0.5",
     "prettier": "^3.9.9",
+    "supabase": "~2.120.0",
     "test-renderer": "~1.2.0",
     "typescript": "~6.0.3"
   }

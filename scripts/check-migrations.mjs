@@ -1,0 +1,81 @@
+#!/usr/bin/env node
+/**
+ * Static guard for Supabase migrations (runs in `npm run verify` / CI). No database needed.
+ *
+ * Enforces the conventions documented in supabase/README.md:
+ *  1. Filenames are `<14-digit timestamp>_<snake_case>.sql` and timestamps are unique.
+ *  2. Every table created in an exposed schema (public) enables RLS in the same migration.
+ *  3. Row level security is never disabled.
+ *  4. No secrets / service-role material in SQL.
+ *  5. seed.sql contains no DDL (schema belongs in migrations).
+ */
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const MIGRATIONS_DIR = join(process.cwd(), 'supabase', 'migrations');
+const SEED_FILE = join(process.cwd(), 'supabase', 'seed.sql');
+const FILENAME = /^(\d{14})_[a-z0-9]+(?:_[a-z0-9]+)*\.sql$/;
+const EXPOSED_SCHEMAS = ['public'];
+
+/** Removes `-- line` and `/* block *\/` comments so documentation text isn't parsed as SQL. */
+function stripComments(sql) {
+  return sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ');
+}
+
+const failures = [];
+const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql'));
+const seenTimestamps = new Map();
+
+for (const file of files.sort()) {
+  const match = FILENAME.exec(file);
+  if (!match) {
+    failures.push(
+      `${file}: name must be <YYYYMMDDHHMMSS>_<snake_case>.sql (use \`npx supabase migration new\`)`,
+    );
+    continue;
+  }
+  const timestamp = match[1];
+  if (seenTimestamps.has(timestamp)) {
+    failures.push(`${file}: duplicate timestamp with ${seenTimestamps.get(timestamp)}`);
+  }
+  seenTimestamps.set(timestamp, file);
+
+  const sql = stripComments(readFileSync(join(MIGRATIONS_DIR, file), 'utf8')).toLowerCase();
+
+  if (/disable\s+row\s+level\s+security/.test(sql)) {
+    failures.push(`${file}: disables row level security`);
+  }
+
+  const created = [
+    ...sql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?/g),
+  ].map((m) => ({ schema: m[1] ?? 'public', table: m[2] }));
+
+  for (const { schema, table } of created) {
+    if (!EXPOSED_SCHEMAS.includes(schema)) continue;
+    const enableRls = new RegExp(
+      `alter\\s+table\\s+(?:only\\s+)?(?:"?${schema}"?\\.)?"?${table}"?\\s+enable\\s+row\\s+level\\s+security`,
+    );
+    if (!enableRls.test(sql)) {
+      failures.push(
+        `${file}: ${schema}.${table} is created without enabling RLS in the same migration`,
+      );
+    }
+  }
+
+  if (
+    /service_role_key|sb_secret_|sbp_[a-f0-9]{20,}|postgres(?:ql)?:\/\/[^:\s]+:[^@\s]+@/.test(sql)
+  ) {
+    failures.push(`${file}: contains secret-looking material`);
+  }
+}
+
+const seed = stripComments(readFileSync(SEED_FILE, 'utf8')).toLowerCase();
+if (/\b(create|alter|drop)\s+(table|schema|function|policy|type|extension)\b/.test(seed)) {
+  failures.push('supabase/seed.sql: contains DDL — schema changes belong in migrations');
+}
+
+if (failures.length > 0) {
+  console.error('Migration check FAILED:\n' + failures.map((f) => `  - ${f}`).join('\n'));
+  process.exit(1);
+}
+console.log(`Migration check passed (${files.length} migration file(s), seed.sql).`);

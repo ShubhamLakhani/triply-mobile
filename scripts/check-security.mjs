@@ -13,7 +13,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const ROOT = process.cwd();
-const SCAN_DIRS = ['app', 'src', 'scripts', 'tests', '.github'];
+const SCAN_DIRS = ['app', 'src', 'scripts', 'tests', '.github', 'supabase'];
 const SCAN_ROOT_FILES = [
   'app.config.ts',
   'eas.json',
@@ -21,7 +21,7 @@ const SCAN_ROOT_FILES = [
   '.env.example',
   'metro.config.js',
 ];
-const SCAN_EXTENSIONS = /\.(ts|tsx|js|mjs|cjs|json|ya?ml|md)$|^\.env\.example$/;
+const SCAN_EXTENSIONS = /\.(ts|tsx|js|mjs|cjs|json|ya?ml|md|sql|toml)$|^\.env\.example$/;
 const SELF = 'scripts/check-security.mjs';
 
 const ALLOWED_PUBLIC_VARS = new Set([
@@ -44,6 +44,8 @@ const SECRET_PATTERNS = [
   { name: 'Sentry auth token', regex: /\bsntrys_[A-Za-z0-9_=+/-]{20,}/ },
   { name: 'private key block', regex: /-----BEGIN [A-Z ]*PRIVATE KEY-----/ },
   { name: 'Postgres URL with password', regex: /postgres(ql)?:\/\/[^:\s]+:[^@\s]+@/ },
+  { name: 'Supabase access token (CLI login)', regex: /\bsbp_[a-f0-9]{40}\b/ },
+  { name: 'Supabase DB password env var', regex: /SUPABASE_DB_PASSWORD\s*[=:]\s*['"]?\S{6,}/ },
   { name: 'Expo access token', regex: /\bEXPO_TOKEN\s*[=:]\s*['"]?[A-Za-z0-9_-]{20,}/ },
 ];
 
@@ -64,7 +66,7 @@ function walk(dir) {
     return out;
   }
   for (const entry of entries) {
-    if (entry === 'node_modules') continue;
+    if (entry === 'node_modules' || entry === '.temp' || entry === '.branches') continue;
     const full = join(dir, entry);
     const stats = statSync(full);
     if (stats.isDirectory()) out.push(...walk(full));

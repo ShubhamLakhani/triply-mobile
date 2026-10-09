@@ -19,6 +19,9 @@ for (const [variant, expected] of Object.entries(EXPECTED)) {
     env: {
       ...process.env,
       APP_VARIANT: variant,
+      // Identifier/scheme checks only. The backend guard is unit-tested in tests/config and is
+      // neutralised here so a developer's local .env.local can't fail the production variant.
+      TRIPLY_PRODUCTION_SUPABASE_REF: '',
       EXPO_NO_TELEMETRY: '1',
       EXPO_OFFLINE: '1',
     },

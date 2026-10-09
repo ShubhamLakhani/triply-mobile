@@ -38,6 +38,9 @@ module.exports = defineConfig([
       'coverage/**',
       'node_modules/**',
       'expo-env.d.ts',
+      // CLI-generated (npm run supabase:types) — never hand-edited or linted.
+      'src/services/supabase/database.types.ts',
+      'supabase/.temp/**',
     ],
   },
   {
