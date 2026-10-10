@@ -101,11 +101,11 @@ const envSchema = z
         message: 'must use https outside development.',
       });
     }
-    if (env.appVariant !== 'development' && !env.sentryDsn) {
+    if (env.appVariant === 'production' && !env.sentryDsn) {
       ctx.addIssue({
         code: 'custom',
         path: ['sentryDsn'],
-        message: 'is required for preview and production builds.',
+        message: 'is required for production builds.',
       });
     }
     if (env.analyticsEnabled && (!env.posthogKey || !env.posthogHost)) {
