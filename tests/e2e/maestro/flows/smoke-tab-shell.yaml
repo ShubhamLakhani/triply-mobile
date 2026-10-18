@@ -1,6 +1,6 @@
-# Phase 2M smoke (no backend writes): a fresh install lands on Welcome behind the auth gate,
-# reaches Sign up / Sign in, and on-device validation runs before any request is sent.
-# (File name kept from Phase 0M; the tab shell is now behind sign-in, see flows/backend/.)
+# Smoke (no backend writes): a fresh install lands on Welcome behind the auth gate, reaches
+# Sign up / Sign in / Forgot password, and on-device validation runs before any request is sent.
+# (File name kept from Phase 0M; the tab shell is behind sign-in, see flows/backend/.)
 # Targets the development build (cc.toolmint.triply.dev) with Metro running.
 appId: cc.toolmint.triply.dev
 name: Smoke - signed-out entry and auth screens
@@ -33,9 +33,17 @@ tags:
 - assertVisible: Enter a valid email address.
 - assertVisible: Use at least 8 characters.
 - assertNotVisible:
-    id: check-email-screen
+    id: verify-email-screen
 - tapOn:
     id: link-sign-in
+- assertVisible:
+    id: sign-in-screen
+- tapOn:
+    id: link-forgot-password
+- assertVisible:
+    id: reset-email-screen
+- tapOn:
+    id: header-back
 - assertVisible:
     id: sign-in-screen
 - tapOn:

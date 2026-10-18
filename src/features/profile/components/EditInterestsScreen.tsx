@@ -6,8 +6,10 @@ import { InlineMessage } from '@/components/ui/InlineMessage';
 import { useAuthSession } from '@/features/auth/hooks/use-auth-session';
 import { InterestPicker } from '@/features/interests/components/InterestPicker';
 import { useInterestSelection } from '@/features/interests/hooks/use-interest-selection';
+import { MAX_INTERESTS, MIN_INTERESTS } from '@/features/interests/types';
 
 import { EditScreenShell } from './EditScreenShell';
+import { interestErrorMessage } from './profile-messages';
 
 export function EditInterestsScreen() {
   const { userId } = useAuthSession();
@@ -19,19 +21,20 @@ export function EditInterestsScreen() {
     try {
       await selection.save();
       router.back();
-    } catch {
-      setError('We couldn’t save your interests. Please try again.');
+    } catch (cause) {
+      setError(interestErrorMessage(cause));
     }
   };
 
   return (
     <EditScreenShell
       title="Interests"
-      subtitle="Pick up to 10."
+      subtitle={`Pick ${MIN_INTERESTS} to ${MAX_INTERESTS}.`}
       onSave={() => void save()}
       saving={selection.isSaving}
-      // Saving replaces the whole selection: only allowed once the saved one has loaded.
-      saveDisabled={selection.status !== 'ready' || !selection.isDirty}
+      // Saving replaces the whole selection: only allowed once the saved one has loaded, and
+      // never below 3 (the database rejects it for a completed profile).
+      saveDisabled={selection.status !== 'ready' || !selection.isDirty || !selection.meetsMinimum}
       error={error}
       testID="edit-interests"
     >

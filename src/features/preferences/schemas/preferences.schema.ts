@@ -23,12 +23,6 @@ export const discoveryPreferencesUpdateSchema = z
       .int()
       .min(L.minOverlapDays, `At least ${L.minOverlapDays} day.`)
       .max(L.maxOverlapDays, `At most ${L.maxOverlapDays} days.`),
-    max_distance_km: z
-      .number()
-      .int()
-      .min(1, 'Must be a positive distance.')
-      .max(L.maxDistanceKm, 'Choose a smaller distance.')
-      .nullable(),
   })
   .partial()
   .strict()
@@ -37,7 +31,10 @@ export const discoveryPreferencesUpdateSchema = z
     path: ['max_age'],
   });
 
-/** Full gender preference list (empty = not configured). Duplicates are collapsed. */
+/**
+ * Full gender preference list (empty = not configured). Duplicates are collapsed. Canonical
+ * values only: the UI's "Everyone" is sent as every value.
+ */
 export const genderPreferencesSchema = z
   .array(z.enum(GENDERS, { message: 'Choose a valid option.' }))
   .transform((values) => [...new Set(values)]);

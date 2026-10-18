@@ -1,7 +1,11 @@
+import { TRIPLY_SQLSTATE } from '@/services/supabase/sqlstate';
+
 export type InterestErrorCode =
   | 'not_authenticated'
   | 'invalid_input'
   | 'limit_reached'
+  | 'minimum_required'
+  | 'account_inactive'
   | 'already_selected'
   | 'interest_unavailable'
   | 'not_allowed'
@@ -30,6 +34,12 @@ export function toInterestError(error: { code?: string }): InterestError {
       });
     case '22023':
       return new InterestError('invalid_input', 'Interest input is invalid.', { cause: error });
+    case TRIPLY_SQLSTATE.blockedAfterOnboarding:
+      return new InterestError('minimum_required', 'At least 3 interests are required.', {
+        cause: error,
+      });
+    case TRIPLY_SQLSTATE.accountInactive:
+      return new InterestError('account_inactive', 'Account is not active.', { cause: error });
     case '42501':
       return new InterestError('not_allowed', 'This interest change is not allowed.', {
         cause: error,

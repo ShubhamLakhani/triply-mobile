@@ -1,5 +1,8 @@
 -- =============================================================================
 -- Phase 1M-D · interests + discovery preferences tests (pgTAP)
+-- Updated Pre-3M (M-03): selections and gender preferences are RPC-only writes,
+-- max 8 interests, max_distance_km deprecated (not writable). Post-onboarding
+-- minimums are covered in onboarding_model.test.sql.
 --
 -- Run against the local Supabase stack:   npx supabase test db
 -- Run without Docker (plain PostgreSQL):  npm run test:db
@@ -10,7 +13,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(77);
+select plan(70);
 
 -- Fixtures (as database owner) ------------------------------------------------------
 insert into auth.users (id, email)
@@ -100,43 +103,35 @@ select throws_ok(
   $$ delete from public.interests where slug = 'test-int-01' $$,
   '42501', null, 'clients cannot delete interests');
 
--- Selections ------------------------------------------------------------------------
-select lives_ok(
-  $$ insert into public.profile_interests (interest_id) values ('e0000000-0000-4000-8000-000000000001') $$,
-  'P can add an interest (user_id defaults to the caller)');
+-- Selections (RPC-only since M-03) -------------------------------------------------
 select throws_ok(
   $$ insert into public.profile_interests (interest_id) values ('e0000000-0000-4000-8000-000000000001') $$,
-  '23505', null, 'duplicate selection is blocked');
+  '42501', null, 'P cannot insert selections directly (replace_profile_interests only)');
 select throws_ok(
-  $$ insert into public.profile_interests (user_id, interest_id)
-     values ('c2c2c2c2-c2c2-4c2c-8c2c-c2c2c2c2c2c2', 'e0000000-0000-4000-8000-000000000002') $$,
-  '42501', null, 'P cannot add an interest for Q');
+  $$ delete from public.profile_interests $$,
+  '42501', null, 'P cannot delete selections directly');
 select throws_ok(
-  $$ insert into public.profile_interests (interest_id) values ('e0000000-0000-4000-8000-000000000099') $$,
-  '23503', null, 'an inactive interest cannot be selected');
+  $$ update public.profile_interests set interest_id = 'e0000000-0000-4000-8000-000000000012' $$,
+  '42501', null, 'selections cannot be updated in place');
 select throws_ok(
-  $$ insert into public.profile_interests (interest_id) values (gen_random_uuid()) $$,
+  $$ select public.replace_profile_interests(array[gen_random_uuid()]) $$,
   '23503', null, 'an unknown interest cannot be selected');
-select lives_ok(
-  $$ insert into public.profile_interests (interest_id)
+select is(
+  (select count(*)::int from public.replace_profile_interests(array(
      select format('e0000000-0000-4000-8000-%s', lpad(n::text, 12, '0'))::uuid
-       from generate_series(2, 10) as n $$,
-  'P can select up to 10 interests');
-select is((select count(*)::int from public.profile_interests), 10, 'P has 10 interests');
+       from generate_series(1, 8) as n))),
+  8, 'P can select up to 8 interests');
 select throws_ok(
-  $$ insert into public.profile_interests (interest_id) values ('e0000000-0000-4000-8000-000000000011') $$,
-  '23514', 'a profile can have at most 10 interests', 'the 11th interest is rejected');
+  $$ select public.replace_profile_interests(array(
+       select format('e0000000-0000-4000-8000-%s', lpad(n::text, 12, '0'))::uuid
+         from generate_series(1, 9) as n)) $$,
+  '23514', 'a profile can have at most 8 interests', 'a 9th interest is rejected');
+select is((select count(*)::int from public.profile_interests), 8, 'P still has 8 interests');
 select lives_ok(
-  $$ delete from public.profile_interests where interest_id = 'e0000000-0000-4000-8000-000000000001' $$,
-  'P can remove an interest');
-select lives_ok(
-  $$ insert into public.profile_interests (interest_id) values ('e0000000-0000-4000-8000-000000000011') $$,
-  'after removing one, another can be added');
-select is((select count(*)::int from public.profile_interests), 10, 'P is back at the limit of 10');
-select throws_ok(
-  $$ update public.profile_interests set interest_id = 'e0000000-0000-4000-8000-000000000012'
-      where interest_id = 'e0000000-0000-4000-8000-000000000011' $$,
-  '42501', null, 'selections cannot be updated in place (remove + add instead)');
+  $$ select public.replace_profile_interests(array(
+       select format('e0000000-0000-4000-8000-%s', lpad(n::text, 12, '0'))::uuid
+         from generate_series(2, 9) as n)) $$,
+  'swapping one interest at the limit works (replace, not add)');
 
 -- Atomic replacement RPC ----------------------------------------------------------
 select is(
@@ -177,12 +172,12 @@ select results_eq(
   'P sees only their own preferences row');
 select lives_ok(
   $$ update public.discovery_preferences
-        set min_age = 25, max_age = 40, minimum_overlap_days = 3, max_distance_km = 500
+        set min_age = 25, max_age = 40, minimum_overlap_days = 3
       where user_id = 'c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1' $$,
   'P can update their preferences');
 select results_eq(
   $$ select min_age, max_age, minimum_overlap_days, max_distance_km from public.discovery_preferences $$,
-  $$ values (25::smallint, 40::smallint, 3::smallint, 500) $$,
+  $$ values (25::smallint, 40::smallint, 3::smallint, null::integer) $$,
   'preference update persisted');
 select throws_ok(
   $$ update public.discovery_preferences set min_age = 17 $$, '23514', null, 'min_age under 18 is rejected');
@@ -198,14 +193,8 @@ select throws_ok(
   $$ update public.discovery_preferences set minimum_overlap_days = 61 $$,
   '23514', null, 'minimum_overlap_days above 60 is rejected');
 select throws_ok(
-  $$ update public.discovery_preferences set max_distance_km = 0 $$,
-  '23514', null, 'non-positive distance is rejected');
-select throws_ok(
-  $$ update public.discovery_preferences set max_distance_km = 20001 $$,
-  '23514', null, 'unreasonable distance is rejected');
-select lives_ok(
-  $$ update public.discovery_preferences set max_distance_km = null $$,
-  'distance can be cleared (optional field)');
+  $$ update public.discovery_preferences set max_distance_km = 500 $$,
+  '42501', null, 'deprecated max_distance_km is not writable by clients');
 select throws_ok(
   $$ update public.discovery_preferences set user_id = 'c2c2c2c2-c2c2-4c2c-8c2c-c2c2c2c2c2c2' $$,
   '42501', null, 'client cannot change preferences owner');
@@ -222,24 +211,19 @@ select lives_ok(
       where user_id = 'c2c2c2c2-c2c2-4c2c-8c2c-c2c2c2c2c2c2' $$,
   'an update targeting Q''s preferences runs but RLS matches no rows');
 
--- Gender preferences -----------------------------------------------------------------
-select lives_ok(
-  $$ insert into public.discovery_gender_preferences (gender) values ('woman') $$,
-  'P can add a gender preference');
+-- Gender preferences (RPC-only since M-03) ------------------------------------------
 select throws_ok(
   $$ insert into public.discovery_gender_preferences (gender) values ('woman') $$,
-  '23505', null, 'duplicate gender preference is blocked');
+  '42501', null, 'P cannot insert gender preferences directly (set_discovery_gender_preferences only)');
 select throws_ok(
-  $$ insert into public.discovery_gender_preferences (gender) values ('robot') $$,
-  '23514', null, 'unknown gender value is rejected');
-select throws_ok(
-  $$ insert into public.discovery_gender_preferences (user_id, gender)
-     values ('c2c2c2c2-c2c2-4c2c-8c2c-c2c2c2c2c2c2', 'man') $$,
-  '42501', null, 'P cannot add a gender preference for Q');
-select lives_ok(
-  $$ delete from public.discovery_gender_preferences where gender = 'woman' $$,
-  'P can delete their own gender preference');
-select is_empty($$ select 1 from public.discovery_gender_preferences $$, 'gender preference removed');
+  $$ delete from public.discovery_gender_preferences $$,
+  '42501', null, 'P cannot delete gender preferences directly');
+select is(
+  (select count(*)::int from public.set_discovery_gender_preferences(array['woman'])),
+  1, 'P can set a gender preference through the RPC');
+select is(
+  (select count(*)::int from public.set_discovery_gender_preferences(array[]::text[])),
+  0, 'before onboarding completes, gender preferences can be cleared (incremental onboarding)');
 select is(
   (select count(*)::int from public.set_discovery_gender_preferences(array['man', 'woman', 'non_binary'])),
   3, 'set_discovery_gender_preferences stores a multi-select');
@@ -270,10 +254,9 @@ select is_empty(
   $$ select 1 from public.discovery_gender_preferences
       where user_id = 'c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1' $$,
   'Q cannot see P''s gender preferences');
-select lives_ok(
-  $$ delete from public.profile_interests where user_id = 'c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1';
-     delete from public.discovery_gender_preferences where user_id = 'c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1' $$,
-  'deletes targeting P''s rows run but RLS matches no rows');
+select throws_ok(
+  $$ delete from public.profile_interests where user_id = 'c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1' $$,
+  '42501', null, 'Q has no direct delete privilege on anyone''s selections');
 select is(
   (select count(*)::int from public.replace_profile_interests(array['e0000000-0000-4000-8000-000000000001']::uuid[])),
   1, 'Q''s replacement only touches Q''s selections');
@@ -321,6 +304,13 @@ select ok(
 select ok(
   not has_table_privilege('authenticated', 'public.profile_interests', 'update'),
   'authenticated has no UPDATE on profile_interests');
+select ok(
+  not has_table_privilege('authenticated', 'public.profile_interests', 'insert')
+  and not has_table_privilege('authenticated', 'public.profile_interests', 'delete')
+  and not has_table_privilege('authenticated', 'public.discovery_gender_preferences', 'insert')
+  and not has_table_privilege('authenticated', 'public.discovery_gender_preferences', 'delete')
+  and not has_column_privilege('authenticated', 'public.discovery_preferences', 'max_distance_km', 'update'),
+  'authenticated has no direct selection/gender writes and no distance write');
 select ok(
   not has_function_privilege('anon', 'public.replace_profile_interests(uuid[])', 'execute')
   and not has_function_privilege('anon', 'public.set_discovery_gender_preferences(text[])', 'execute'),

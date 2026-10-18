@@ -10,16 +10,20 @@ describe('profileUpdateSchema', () => {
 
   it('accepts a partial update with valid values', () => {
     expect(
-      profileUpdateSchema.parse({
-        date_of_birth: '1995-05-17',
-        gender: 'non_binary',
-        is_discoverable: true,
-      }),
-    ).toEqual({ date_of_birth: '1995-05-17', gender: 'non_binary', is_discoverable: true });
+      profileUpdateSchema.parse({ date_of_birth: '1995-05-17', gender: 'non_binary' }),
+    ).toEqual({ date_of_birth: '1995-05-17', gender: 'non_binary' });
   });
 
   it('rejects protected columns', () => {
-    for (const key of ['id', 'is_profile_complete', 'created_at', 'updated_at']) {
+    for (const key of [
+      'id',
+      'is_profile_complete',
+      'onboarding_completed_at',
+      'discovery_paused_at',
+      'is_discoverable',
+      'created_at',
+      'updated_at',
+    ]) {
       expect(profileUpdateSchema.safeParse({ [key]: 'x' }).success).toBe(false);
     }
   });
@@ -40,7 +44,8 @@ describe('profileUpdateSchema', () => {
 
   it('enforces database length limits', () => {
     expect(profileUpdateSchema.safeParse({ first_name: 'x'.repeat(81) }).success).toBe(false);
-    expect(profileUpdateSchema.safeParse({ bio: 'x'.repeat(1001) }).success).toBe(false);
+    expect(profileUpdateSchema.safeParse({ bio: 'x'.repeat(500) }).success).toBe(true);
+    expect(profileUpdateSchema.safeParse({ bio: 'x'.repeat(501) }).success).toBe(false);
     expect(profileUpdateSchema.safeParse({ occupation: 'x'.repeat(121) }).success).toBe(false);
   });
 });

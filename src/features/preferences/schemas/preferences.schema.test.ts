@@ -1,15 +1,10 @@
 import { discoveryPreferencesUpdateSchema, genderPreferencesSchema } from './preferences.schema';
 
 describe('discovery preference schemas', () => {
-  it('accepts valid preferences and nullable distance', () => {
+  it('accepts valid preferences', () => {
     expect(
-      discoveryPreferencesUpdateSchema.parse({
-        min_age: 25,
-        max_age: 40,
-        minimum_overlap_days: 3,
-        max_distance_km: null,
-      }),
-    ).toEqual({ min_age: 25, max_age: 40, minimum_overlap_days: 3, max_distance_km: null });
+      discoveryPreferencesUpdateSchema.parse({ min_age: 25, max_age: 40, minimum_overlap_days: 3 }),
+    ).toEqual({ min_age: 25, max_age: 40, minimum_overlap_days: 3 });
   });
 
   it.each([
@@ -18,8 +13,9 @@ describe('discovery preference schemas', () => {
     [{ min_age: 40, max_age: 30 }],
     [{ minimum_overlap_days: 0 }],
     [{ minimum_overlap_days: 61 }],
-    [{ max_distance_km: 0 }],
-    [{ max_distance_km: 20001 }],
+    // Deprecated distance is never sent (no location-based matching).
+    [{ max_distance_km: null }],
+    [{ max_distance_km: 500 }],
     [{ min_age: 25.5 }],
     [{ user_id: 'x' }],
     [{ created_at: 'x' }],

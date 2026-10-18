@@ -7,6 +7,7 @@ import type { useSyncExternalStore as import_useSyncExternalStore } from 'react'
 
 import { RootNavigator } from '@/features/auth/components/RootNavigator';
 import type { AuthSessionState } from '@/features/auth/hooks/use-auth-session';
+import { completeOnboarding } from '@/features/onboarding/api/onboarding-api';
 import {
   clearOnboardingProgress,
   getCompletedStep,
@@ -43,8 +44,21 @@ jest.mock('@/features/auth/hooks/use-auth-session', () => {
   };
 });
 jest.mock('@/features/profile/api/profile-api', () => ({
+  PROFILE_COLUMNS: 'id',
   fetchOwnProfile: jest.fn(),
   updateOwnProfile: jest.fn(),
+}));
+jest.mock('@/features/onboarding/api/onboarding-api', () => {
+  const actual = jest.requireActual('@/features/onboarding/api/onboarding-api');
+  return { ...actual, completeOnboarding: jest.fn() };
+});
+jest.mock('@/features/account/hooks/use-account-state', () => ({
+  useOwnAccountState: () => ({
+    data: { status: 'active', suspended_until: null },
+    error: null,
+    fetchStatus: 'idle',
+    refetch: jest.fn(),
+  }),
 }));
 jest.mock('@/features/photos/hooks/use-profile-photos', () => ({
   useOwnProfilePhotos: () => ({ data: [], isLoading: false }),
@@ -82,11 +96,14 @@ const incomplete: Profile = {
   home_country: null,
   occupation: null,
   is_profile_complete: false,
-  is_discoverable: false,
+  onboarding_completed_at: null,
+  discovery_paused_at: null,
   created_at: '',
   updated_at: '',
 };
+// Core profile complete, onboarding not yet completed on the server.
 const complete: Profile = { ...incomplete, gender: 'woman', is_profile_complete: true };
+const onboarded: Profile = { ...complete, onboarding_completed_at: '2026-10-11T10:00:00Z' };
 
 let discoverMounts = 0;
 function CountingDiscover() {
@@ -114,6 +131,7 @@ function signIn() {
     isInitializing: false,
     restoreError: null,
     retryRestore: jest.fn(),
+    passwordRecovery: false,
     signOut: jest.fn().mockResolvedValue(undefined),
   } satisfies AuthSessionState);
 }
@@ -158,8 +176,8 @@ describe('onboarding routing (real profile hooks)', () => {
     await fireEvent.press(screen.getByTestId('field-gender-woman'));
     await fireEvent.press(screen.getByTestId('onboarding-profile-primary'));
 
-    // The saved (complete) row is cached and the refetch is still in flight: the gate must
-    // keep the user in onboarding (the marker was written before the save).
+    // The saved (core-complete) row is cached and the refetch is still in flight: the gate keeps
+    // the user in onboarding because only the server's onboarding_completed_at ends it.
     // Let the navigator settle (renderRouter runs on fake timers): a guard flip would
     // redirect to Discover within a few ticks.
     await act(async () => {
@@ -168,11 +186,13 @@ describe('onboarding routing (real profile hooks)', () => {
     expect(screen.queryByTestId('discover-screen')).toBeNull();
     expect(discoverMounts).toBe(0);
     expect(router.getPathname()).toMatch(/^\/onboarding/);
-    expect(getCompletedStep(USER_ID)).toBe('profile');
+    // No marker is needed to hold the user here any more (the save resolves after its refetch).
+    expect(getCompletedStep(USER_ID)).toBeNull();
 
     await act(async () => refetch.resolve(complete));
     expect(await screen.findByTestId('onboarding-interests')).toBeOnTheScreen();
     expect(router.getPathname()).toBe('/onboarding/interests');
+    expect(getCompletedStep(USER_ID)).toBe('profile');
     expect(discoverMounts).toBe(0);
   });
 
@@ -189,8 +209,8 @@ describe('onboarding routing (real profile hooks)', () => {
 
     expect(await screen.findByTestId('onboarding-profile-error')).toBeOnTheScreen();
     expect(router.getPathname()).toBe('/onboarding');
-    // "Started" only: the server row (still incomplete) decides the resume step.
-    expect(getCompletedStep(USER_ID)).toBe('profile');
+    // Nothing was recorded locally; the server row (still incomplete) decides the resume step.
+    expect(getCompletedStep(USER_ID)).toBeNull();
 
     // Retrying succeeds and continues normally.
     jest.mocked(updateOwnProfile).mockResolvedValueOnce(complete);
@@ -212,24 +232,38 @@ describe('onboarding routing (real profile hooks)', () => {
     expect(discoverMounts).toBe(0);
   });
 
-  it('finishing onboarding clears the marker and the guard hands over to Discover', async () => {
+  it('finishing onboarding: the server timestamp hands over to Discover; the marker is cleared', async () => {
     jest.mocked(fetchOwnProfile).mockResolvedValue(complete);
+    jest.mocked(completeOnboarding).mockImplementation(async () => {
+      jest.mocked(fetchOwnProfile).mockResolvedValue(onboarded);
+      return onboarded;
+    });
     markStepCompleted(USER_ID, 'photos');
 
     const { wrapper } = createTestProviders();
     const router = renderRouter(routes, { initialUrl: '/', wrapper });
     await router;
     expect(await screen.findByTestId('onboarding-ready')).toBeOnTheScreen();
-    // The step re-checks the server row on mount; the button waits for that answer.
-    await waitFor(() =>
-      expect(screen.getByTestId('onboarding-ready-primary').props.accessibilityState.busy).toBe(
-        false,
-      ),
-    );
     await fireEvent.press(screen.getByTestId('onboarding-ready-primary'));
 
     expect(await screen.findByTestId('discover-screen')).toBeOnTheScreen();
     expect(router.getPathname()).toBe('/discover');
-    expect(getCompletedStep(USER_ID)).toBeNull();
+    expect(discoverMounts).toBe(1);
+    await waitFor(() => expect(getCompletedStep(USER_ID)).toBeNull());
+  });
+
+  it('a failed completion keeps the user on Ready (no tabs flash)', async () => {
+    jest.mocked(fetchOwnProfile).mockResolvedValue(complete);
+    jest.mocked(completeOnboarding).mockRejectedValue(new Error('offline'));
+    markStepCompleted(USER_ID, 'photos');
+
+    const { wrapper } = createTestProviders();
+    const router = renderRouter(routes, { initialUrl: '/', wrapper });
+    await router;
+    await fireEvent.press(await screen.findByTestId('onboarding-ready-primary'));
+    expect(await screen.findByTestId('onboarding-ready-error')).toBeOnTheScreen();
+    expect(router.getPathname()).toBe('/onboarding/ready');
+    expect(discoverMounts).toBe(0);
+    expect(getCompletedStep(USER_ID)).toBe('photos');
   });
 });

@@ -1,0 +1,31 @@
+<!-- Triply · "Confirm signup" email. Code only: the app never relies on a link (Pre-3M).
+     Paste the same HTML into the hosted project: Authentication → Emails → Confirm signup. -->
+<div
+  style="
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    color: #1d1d1b;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 24px;
+  "
+>
+  <h2 style="margin: 0 0 12px">Confirm your email</h2>
+  <p style="margin: 0 0 16px">Enter this code in the Triply app to finish creating your account:</p>
+  <p
+    style="
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: 8px;
+      font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+      margin: 0 0 16px;
+    "
+  >
+    {{ .Token }}
+  </p>
+  <p style="margin: 0 0 8px; color: #5f5d57">
+    The code expires in 1 hour. If you asked for a new one, only the newest code works.
+  </p>
+  <p style="margin: 0; color: #5f5d57">
+    If you didn’t sign up for Triply, you can ignore this email.
+  </p>
+</div>

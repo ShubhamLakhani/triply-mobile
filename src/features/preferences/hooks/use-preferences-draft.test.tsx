@@ -24,7 +24,6 @@ const savedRow: DiscoveryPreferences = {
   min_age: 27,
   max_age: 38,
   minimum_overlap_days: 3,
-  max_distance_km: null,
   created_at: '',
   updated_at: '',
 };

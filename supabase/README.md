@@ -194,11 +194,25 @@ npx supabase test db   # authoritative: real local Supabase stack (Docker)
 npm run test:db        # fallback: plain PostgreSQL 15+ with pgTAP, no Docker
 ```
 
-`npm run test:db` builds a throwaway cluster. It applies `scripts/db-test/supabase-shim.sql`
-(a minimal emulation of Supabase roles, `auth.users`, `auth.uid()` and default grants), then
-runs every migration and every `tests/database/*.test.sql`. To install the tools on macOS:
-`brew install postgresql@17 pgtap`, then set `PG_BIN=$(brew --prefix postgresql@17)/bin` if
-needed.
+`npm run test:db` builds a throwaway cluster in a temp directory (private Unix socket, deleted
+on exit). It applies `scripts/db-test/supabase-shim.sql` (a minimal emulation of Supabase
+roles, `auth.users`, `auth.uid()`, storage and default grants), loads pgTAP, then runs every
+migration, `seed.sql` twice, and every `tests/database/*.test.sql`, and prints the pass/fail
+assertion count.
+
+Prerequisites (nothing is installed into an existing PostgreSQL):
+
+- **PostgreSQL 15+ server binaries.** Found automatically from `PG_BIN`, `PATH`,
+  Postgres.app (`/Applications/Postgres.app/Contents/Versions/latest/bin`), Homebrew
+  `postgresql@17/16` or `/usr/lib/postgresql/<ver>/bin`. On this Mac: Postgres.app 17.
+- **pgTAP.** If the server has the extension (e.g. apt `postgresql-16-pgtap` on CI) it is used
+  directly. Otherwise pgTAP `v1.3.3` is cloned once from `github.com/theory/pgtap` into
+  `.cache/db-test/` (git-ignored) and built there with `make` (plain SQL; needs `git`, `make`,
+  `perl`). The test files keep `create extension if not exists pgtap` for `supabase test db`;
+  the runner swaps that line for a comment when it preloads the local build.
+
+Docker is not needed. If it ever becomes available, `npx supabase test db` remains the
+authoritative check against the real local stack.
 
 ### Recovery
 
@@ -690,13 +704,124 @@ risks are in `SECURITY.md`.
   - a public or private function does not revoke execute from `public`;
   - a SECURITY DEFINER function lacks `search_path = ''`.
 
+## Pre-3M foundation (M-01 catalog · M-02 account states · M-03 onboarding model)
+
+Migrations `20261011150000_catalog_interests_v1`, `20261011150100_account_states`,
+`20261011150200_profile_onboarding_model`. Tests: `catalog_interests.test.sql`,
+`account_states.test.sql`, `onboarding_model.test.sql` (plus updated 1M suites).
+
+### Interest catalog (M-01)
+
+- 30 launch interests in 5 categories (outdoors, wellness, culture, lifestyle, social), shipped
+  by migration so every environment has them. The 14 Phase 1M slugs are unchanged.
+- Upsert by `slug` (ids are preserved; re-applying is a no-op). Rows are **never deleted**
+  (`profile_interests` restricts it): retire one in a new `catalog_vN` migration with
+  `active = false`. Clients only see active rows.
+
+### Account states (M-02)
+
+- `public.account_states` (1:1 with `auth.users`, trigger-created and backfilled): `status`
+  `active | suspended | banned | deletion_pending`, an internal `safety_hold_at`, `reason_code`,
+  `status_changed_at` (trigger-maintained), `suspended_until` (a passed end date reads as
+  active, no job needed).
+- **No client privileges.** The app reads its own effective status through
+  `get_my_account_state()` (status + `suspended_until` only; never the hold or reason). Writes
+  are migrations / `service_role` / future moderation tooling. The app ships no service key.
+- Helpers for every write RPC: `private.account_is_active(uid)` (missing row = inactive) and
+  `private.assert_active_actor()` (returns `auth.uid()`, raises `TR001` otherwise).
+- The safety hold is silent and does **not** make an account inactive; no automatic hold
+  rules exist yet (founder policy: underage / serious immediate-safety only; 3 reports →
+  priority review, not a hold).
+- Enforced today on: profile updates, discovery preference updates, interest and gender
+  preference saves, all photo RPCs, `complete_onboarding`, `set_discovery_paused`. Decisions,
+  blocks and reports are unchanged (block/report must stay available to suspended users;
+  `submit_decision` is rewritten in Phase 4M).
+
+### Profile / onboarding model (M-03)
+
+| State               | Where                                    | Rule                                              |
+| ------------------- | ---------------------------------------- | ------------------------------------------------- |
+| Core complete       | `profiles.is_profile_complete` (trigger) | first name, DOB, 18+, gender                      |
+| Onboarding complete | `profiles.onboarding_completed_at`       | set once by `complete_onboarding()`               |
+| Discovery eligible  | computed in Phase 4M                     | never stored                                      |
+| Pause               | `profiles.discovery_paused_at`           | `set_discovery_paused(boolean)`, user intent only |
+
+- `complete_onboarding()` (actor = `auth.uid()`) takes the photo, interest and gender locks,
+  then checks in one transaction: core complete (18+ re-checked), a primary photo, 3–8
+  interests, at least one gender preference, a valid age range. Missing items → `TR002` with
+  `details` such as `photos,interests`. Idempotent; the timestamp can never change or clear.
+  Bio and home city/country are optional.
+- Date of birth: future and under-18 values are rejected whenever written (so the stored
+  completeness can no longer go stale). After onboarding, end users cannot change it
+  (`TR003 date_of_birth_locked`); support writes without a user JWT can.
+- Post-onboarding guards (`TR003`): first name/gender cannot be cleared
+  (`core_profile_required`), interests stay 3–8 (`interests_minimum`), gender preferences stay
+  non-empty (`gender_preferences_required`), the last photo cannot be deleted (`last_photo`;
+  replacing works: register the new photo, then delete the old). Before completion every step
+  stays writable incrementally.
+- Direct client INSERT/DELETE on `profile_interests` and `discovery_gender_preferences` is
+  revoked; `replace_profile_interests` / `set_discovery_gender_preferences` are now SECURITY
+  DEFINER and the only write path. Interests max 8 (was 10). Bio max 500 (was 1000).
+- "Everyone" is a UI option stored as all five canonical gender values (no sentinel).
+- Deprecated, kept for installed preview builds, dropped with the Phase 4M discovery
+  migration: `profiles.is_discoverable` (no client privilege, always `false`) and
+  `discovery_preferences.max_distance_km` (no client privilege, unused; no location matching).
+
+### Error contract (SQLSTATE → app)
+
+| SQLSTATE | Meaning                         | `details`                                                                                                         |
+| -------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `TR001`  | account inactive                | –                                                                                                                 |
+| `TR002`  | onboarding requirements not met | `profile,photos,interests,gender_preferences,age_range` (subset)                                                  |
+| `TR003`  | change blocked after onboarding | `date_of_birth_locked`, `core_profile_required`, `interests_minimum`, `gender_preferences_required`, `last_photo` |
+| `23514`  | check failed                    | `date_of_birth_future`, `date_of_birth_under_18` (or none for CHECK constraints)                                  |
+
+The mobile error mappers switch on these (`services/supabase/sqlstate.ts`); any `TR001`
+re-fetches the account state so the app shows the restricted screen.
+
+## Auth emails: 6-digit codes + custom SMTP (Dev setup)
+
+Sign-up confirmation and password reset use **6-digit codes typed in the app** (no links):
+`verifyOtp({ type: 'email' })` and `verifyOtp({ type: 'recovery' })`. Local config mirrors
+hosted: confirmations on, password ≥ 8, `max_frequency = 60s`, OTP length 6 / 1 hour, and the
+templates in `supabase/templates/` (`{{ .Token }}`, no `{{ .ConfirmationURL }}`).
+
+Hosted auth settings are **not** pushed from `config.toml` (`supabase config push` would also
+overwrite `site_url`, redirect URLs and every other hosted auth setting with local values). Set
+them in the dashboard of **Triply Development** (`smaopxexnlcwnrqkuwou`) only:
+
+1. **Resend (founder):** add a sending domain. Recommended: a Dev-only subdomain such as
+   `dev-mail.<triply-domain>`; add the DNS records Resend shows (SPF/return-path, DKIM, and a
+   `_dmarc` TXT with `p=none` to start) and wait for "Verified". Without a domain yet,
+   Resend's `onboarding@resend.dev` sender only delivers to the Resend account owner's own
+   address (enough for founder testing, not for testers).
+2. **Resend API key:** create one with _Sending access_ restricted to that domain. Store it in
+   your password manager; it is entered only in the Supabase dashboard, never in chat, the
+   repo or the app.
+3. **Authentication → Emails → SMTP Settings → Enable custom SMTP:**
+   host `smtp.resend.com`, port `465` (SSL; `587` STARTTLS also works), username `resend`,
+   password = the API key, sender email `no-reply@dev-mail.<triply-domain>` (or
+   `onboarding@resend.dev`), sender name `Triply (Dev)`, minimum interval 60 s.
+4. **Authentication → Rate Limits:** "emails sent" 30/hour for Dev testing (the built-in SMTP
+   allowed ~2/hour, which blocked Phase 2M testing).
+5. **Authentication → Emails → Templates:** _Confirm signup_ → subject `Your Triply code`, body
+   = `supabase/templates/confirmation.html`. _Reset Password_ → subject
+   `Your Triply password reset code`, body = `supabase/templates/recovery.html`.
+6. **Authentication → Sign In / Providers → Email:** Confirm email **on**; Email OTP length
+   **6**; Email OTP expiration **3600** s; minimum password length **8**.
+7. **Verify:** sign up with a plus-address (`you+triply-dev-1@…`), check Resend → Emails shows
+   _Delivered_ and the email shows a 6-digit code and no link; Supabase → Logs → Auth shows
+   `user_confirmation_requested` / `user_signedup`.
+
+The deprecated `<scheme>://auth/callback` redirect URLs stay listed for one compatibility
+release (old confirmation links); remove them with `app/auth/callback.tsx` afterwards.
+
 ## Seed data
 
-`seed.sql` holds development and staging **reference data only**. Right now that's two catalogs:
-
-- **Destinations:** Bali, Bangkok, Dubai, Barcelona, Paris and Lisbon.
-- **Interests:** hiking, photography, food, coffee, beaches, surfing, nightlife, fitness, art,
-  music, adventure, culture, wellness and digital nomad.
+`seed.sql` holds local/development **reference data only**. Since Pre-3M it is just the starter
+**destinations** (Bali, Bangkok, Dubai, Barcelona, Paris, Lisbon); the Phase 3M markets
+migration replaces them. **Interests ship through migrations** (`…_catalog_interests_v1.sql`,
+see "Interest catalog" below) so hosted projects get them too.
 
 - **Local stack:** applied automatically on `supabase start` and `supabase db reset`.
 - **Triply Development:** applied only on explicit request:

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { isAdult, isFutureDate, MINIMUM_AGE } from '../age';
-import { GENDERS } from '../types';
+import { BIO_MAX_LENGTH, GENDERS } from '../types';
 
 /** Trimmed optional text; empty becomes null (mirrors private.normalize_text). */
 const nullableText = (max: number) =>
@@ -21,19 +21,19 @@ const dateOfBirthSchema = z.iso
 
 /**
  * Editable own-profile fields. `.strict()` rejects protected columns (id, created_at,
- * updated_at, is_profile_complete) before a request is ever made. The database enforces
- * the same rules independently; this schema exists for UX and type safety.
+ * updated_at, is_profile_complete, onboarding_completed_at, discovery_paused_at,
+ * is_discoverable) before a request is ever made. The database enforces the same rules
+ * independently; this schema exists for UX and type safety.
  */
 export const profileUpdateSchema = z
   .object({
     first_name: nullableText(80),
     date_of_birth: dateOfBirthSchema,
     gender: z.enum(GENDERS, { message: 'Choose an option.' }).nullable(),
-    bio: nullableText(1000),
+    bio: nullableText(BIO_MAX_LENGTH),
     home_city: nullableText(120),
     home_country: nullableText(120),
     occupation: nullableText(120),
-    is_discoverable: z.boolean(),
   })
   .partial()
   .strict();

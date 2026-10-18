@@ -14,6 +14,7 @@ import { useOwnProfilePhotos } from '@/features/photos/hooks/use-profile-photos'
 import {
   formatOverlapDays,
   GENDER_PREFERENCE_OPTIONS,
+  isEveryone,
 } from '@/features/preferences/components/PreferencesFields';
 import {
   useDiscoveryPreferences,
@@ -55,14 +56,17 @@ export function ProfileScreen() {
 
   const preferenceSummary = (() => {
     if (!discovery.data) return null;
-    const who =
-      !genders.data ||
-      genders.data.length === 0 ||
-      genders.data.length === GENDER_PREFERENCE_OPTIONS.length
-        ? 'Everyone'
-        : genders.data
-            .map((g) => GENDER_PREFERENCE_OPTIONS.find((o) => o.value === g)?.label ?? g)
-            .join(', ');
+    // Empty is "not set" (onboarding requires at least one); every value is "Everyone".
+    const who = !genders.data
+      ? null
+      : genders.data.length === 0
+        ? 'Not set'
+        : isEveryone(genders.data)
+          ? 'Everyone'
+          : genders.data
+              .map((g) => GENDER_PREFERENCE_OPTIONS.find((o) => o.value === g)?.label ?? g)
+              .join(', ');
+    if (who === null) return null;
     return `${who} · ${discovery.data.min_age}–${discovery.data.max_age} · ${formatOverlapDays(discovery.data.minimum_overlap_days)} overlap`;
   })();
 

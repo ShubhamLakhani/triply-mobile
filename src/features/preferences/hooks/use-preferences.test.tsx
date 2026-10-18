@@ -19,10 +19,8 @@ jest.mock('../api/preference-api', () => ({
   updateDiscoveryPreferences: jest.fn(),
 }));
 jest.mock('@/features/interests/api/interest-api', () => ({
-  addInterest: jest.fn(),
   fetchActiveInterests: jest.fn(),
   fetchOwnInterests: jest.fn(),
-  removeInterest: jest.fn(),
   replaceOwnInterests: jest.fn(),
 }));
 
@@ -51,7 +49,6 @@ describe('preference + interest mutation hooks', () => {
       min_age: 25,
       max_age: 40,
       minimum_overlap_days: 3,
-      max_distance_km: null,
       created_at: '2026-10-09T00:00:00Z',
       updated_at: '2026-10-09T00:00:00Z',
     };

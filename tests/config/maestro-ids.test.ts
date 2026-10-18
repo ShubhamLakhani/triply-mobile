@@ -21,9 +21,17 @@ const source = [...files(join(ROOT, 'app'), /\.tsx?$/), ...files(join(ROOT, 'src
   .map((file) => readFileSync(file, 'utf8'))
   .join('\n');
 
+// Interest chips are `interest-<slug>`; the slugs ship in catalog migrations (M-01).
+const catalogSql = files(join(ROOT, 'supabase', 'migrations'), /catalog_.*\.sql$/)
+  .map((file) => readFileSync(file, 'utf8'))
+  .join('\n');
+
 function existsInSource(id: string): boolean {
   if (source.includes(`'${id}'`) || source.includes(`"${id}"`) || source.includes(`\`${id}\``)) {
     return true;
+  }
+  if (id.startsWith('interest-') && source.includes('`interest-${interest.slug}`')) {
+    return catalogSql.includes(`('${id.slice('interest-'.length)}',`);
   }
   // Derived IDs: the base testID is in source and the suffix is appended at runtime.
   const base = id.slice(0, id.lastIndexOf('-'));

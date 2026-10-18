@@ -1,3 +1,11 @@
+/**
+ * DEPRECATED (Pre-3M): new sign-ups confirm with a 6-digit email code (`verifySignUpCode`) and
+ * password reset uses a recovery code; neither sends a link any more. This handler stays for
+ * ONE compatibility release so confirmation links already sitting in inboxes still work, with
+ * the same hardening (PKCE code only, raw tokens rejected, never replaces a signed-in session,
+ * each code exchanged once). Remove it, `app/auth/callback.tsx` and the redirect URLs in
+ * Supabase Auth → URL Configuration in the release after Pre-3M ships.
+ */
 import * as Linking from 'expo-linking';
 
 import { getSupabaseClient, warmUpSupabaseConnection } from '@/services/supabase';

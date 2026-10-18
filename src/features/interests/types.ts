@@ -16,5 +16,11 @@ export type OwnInterest = Pick<ProfileInterest, 'interest_id' | 'created_at'> & 
   interest: InterestSummary | null;
 };
 
-/** Mirrors the database limit enforced by private.profile_interests_before_insert(). */
-export const MAX_INTERESTS = 10;
+/** Mirrors the database maximum (private.profile_interests_before_insert, replace RPC). */
+export const MAX_INTERESTS = 8;
+
+/**
+ * Minimum for completing onboarding and for every save afterwards (complete_onboarding /
+ * replace_profile_interests). Fewer may be saved while onboarding is still in progress.
+ */
+export const MIN_INTERESTS = 3;

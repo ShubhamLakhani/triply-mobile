@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { isAdult, isFutureDate, MINIMUM_AGE } from '../age';
-import { GENDERS, type Gender } from '../types';
+import { BIO_MAX_LENGTH, GENDERS, type Gender } from '../types';
 
 import type { ProfileUpdateInput } from './profile.schema';
 
@@ -30,7 +30,7 @@ export const profileBasicsFormSchema = z
     dob_month: digits('month', 2),
     dob_year: digits('year', 4),
     gender: z.enum(GENDERS, { message: 'Choose an option.' }),
-    bio: optionalText(1000),
+    bio: optionalText(BIO_MAX_LENGTH),
     home_city: optionalText(120),
     home_country: optionalText(120),
     occupation: optionalText(120),
@@ -73,12 +73,19 @@ export function toIsoDateOfBirth(year: string, month: string, day: string): stri
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
+/**
+ * Form values → profile update. With `dobLocked` (onboarding complete: the database rejects any
+ * change) the date of birth is left out of the payload entirely.
+ */
 export function toProfileUpdate(
   values: z.output<typeof profileBasicsFormSchema>,
+  options: { dobLocked?: boolean } = {},
 ): ProfileUpdateInput {
   return {
     first_name: values.first_name,
-    date_of_birth: toIsoDateOfBirth(values.dob_year, values.dob_month, values.dob_day),
+    ...(options.dobLocked
+      ? {}
+      : { date_of_birth: toIsoDateOfBirth(values.dob_year, values.dob_month, values.dob_day) }),
     gender: values.gender as Gender,
     bio: values.bio || null,
     home_city: values.home_city || null,

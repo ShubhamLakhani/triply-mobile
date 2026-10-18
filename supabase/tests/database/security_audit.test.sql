@@ -44,8 +44,8 @@ select is(
                      order by table_name::text collate "C", privilege_type::text collate "C")
      from information_schema.role_table_grants
     where table_schema = 'public' and grantee = 'authenticated' and privilege_type <> 'SELECT'),
-  'discovery_gender_preferences:DELETE, profile_interests:DELETE',
-  'whole-table write grants for authenticated are exactly the intended inventory');
+  null::text,
+  'authenticated has no whole-table write grants (selections/gender preferences are RPC-only since M-03)');
 select is(
   (select string_agg(format('%s:%s(%s)', table_name, privilege_type, cols), ' | '
                      order by table_name::text collate "C", privilege_type::text collate "C")
@@ -54,7 +54,7 @@ select is(
              from information_schema.column_privileges
             where table_schema = 'public' and grantee = 'authenticated' and privilege_type <> 'SELECT'
             group by 1, 2) g),
-  'discovery_gender_preferences:INSERT(gender,user_id) | discovery_preferences:UPDATE(max_age,max_distance_km,min_age,minimum_overlap_days) | profile_interests:INSERT(interest_id,user_id) | profiles:UPDATE(bio,date_of_birth,first_name,gender,home_city,home_country,is_discoverable,occupation) | trips:INSERT(destination_id,end_date,start_date,user_id,visibility) | trips:UPDATE(destination_id,end_date,start_date,status,visibility)',
+  'discovery_preferences:UPDATE(max_age,min_age,minimum_overlap_days) | profiles:UPDATE(bio,date_of_birth,first_name,gender,home_city,home_country,occupation) | trips:INSERT(destination_id,end_date,start_date,user_id,visibility) | trips:UPDATE(destination_id,end_date,start_date,status,visibility)',
   'column-level write grants for authenticated are exactly the intended inventory');
 select is_empty(
   $$ select tablename, policyname from pg_catalog.pg_policies
@@ -87,8 +87,10 @@ select is_empty(
   'authenticated cannot execute any private helper');
 select is_empty(
   $$ select p.proname from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
-      where n.nspname = 'public' and p.prosecdef and p.prosrc not like '%auth.uid()%' $$,
-  'every public SECURITY DEFINER function derives identity from auth.uid()');
+      where n.nspname = 'public' and p.prosecdef
+        and p.prosrc not like '%auth.uid()%'
+        and p.prosrc not like '%private.assert_active_actor()%' $$,
+  'every public SECURITY DEFINER function derives identity from auth.uid() (directly or via private.assert_active_actor())');
 select is_empty(
   $$ select p.proname from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
       where n.nspname in ('public', 'private') and p.prosrc ~* '\mexecute\M\s' $$,
@@ -119,9 +121,13 @@ update public.profiles
    set first_name = 'Audit', gender = 'woman', date_of_birth = date '1990-01-01'
  where id in ('1d000000-0000-4000-8000-00000000000a', '2d000000-0000-4000-8000-00000000000b',
               '3d000000-0000-4000-8000-00000000000c');
+-- A minor row as written before M-03 (writes now reject under-18 dates): bypass the
+-- profile trigger for this fixture only, as legacy data would have.
+alter table public.profiles disable trigger profiles_before_write;
 update public.profiles
    set first_name = 'Minor', gender = 'man', date_of_birth = current_date - interval '15 years'
  where id = '4d000000-0000-4000-8000-00000000000d';
+alter table public.profiles enable trigger profiles_before_write;
 insert into public.destinations (id, slug, city_name, country_name, country_code)
 values ('d3000000-0000-4000-8000-000000000001', 'test-audit-town', 'Audit Town', 'Testland', 'TL');
 insert into public.trips (id, user_id, destination_id, start_date, end_date)
@@ -192,14 +198,12 @@ select is_empty(
   $$ with u as (update public.discovery_preferences set min_age = 50 where user_id = '2d000000-0000-4000-8000-00000000000b' returning 1)
      select * from u $$,
   'A''s UPDATE of B''s preferences matches no rows');
-select is_empty(
-  $$ with d as (delete from public.profile_interests where user_id = '2d000000-0000-4000-8000-00000000000b' returning 1)
-     select * from d $$,
-  'A''s DELETE of B''s interests matches no rows');
-select is_empty(
-  $$ with d as (delete from public.discovery_gender_preferences where user_id = '2d000000-0000-4000-8000-00000000000b' returning 1)
-     select * from d $$,
-  'A''s DELETE of B''s gender preferences matches no rows');
+select throws_ok(
+  $$ delete from public.profile_interests where user_id = '2d000000-0000-4000-8000-00000000000b' $$,
+  '42501', null, 'A cannot delete B''s interests (no direct delete privilege)');
+select throws_ok(
+  $$ delete from public.discovery_gender_preferences where user_id = '2d000000-0000-4000-8000-00000000000b' $$,
+  '42501', null, 'A cannot delete B''s gender preferences (no direct delete privilege)');
 select throws_ok(
   $$ insert into public.trips (user_id, destination_id, start_date, end_date)
      values ('2d000000-0000-4000-8000-00000000000b', 'd3000000-0000-4000-8000-000000000001', current_date + 1, current_date + 2) $$,

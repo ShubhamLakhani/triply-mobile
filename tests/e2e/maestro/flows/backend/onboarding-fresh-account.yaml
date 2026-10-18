@@ -1,9 +1,11 @@
-# Full Phase 2M onboarding for a CONFIRMED account that has never completed onboarding:
+# Onboarding for a CONFIRMED account that has never completed onboarding, up to the photos
+# step (Pre-3M: interests 3-8, a gender preference and a photo are all required):
 #   maestro test -e TRIPLY_E2E_EMAIL=... -e TRIPLY_E2E_PASSWORD=... \
 #     tests/e2e/maestro/flows/backend/onboarding-fresh-account.yaml
-# Writes profile, preferences and (optionally skipped) interests/photos to the backend.
+# Adding the photo goes through the system photo picker, which Maestro cannot drive reliably:
+# add one by hand, then run onboarding-finish.yaml (same app session).
 appId: cc.toolmint.triply.dev
-name: Backend - onboarding to the tabs, then sign out
+name: Backend - onboarding up to the photos step
 tags:
   - backend
 ---
@@ -28,7 +30,7 @@ tags:
     visible:
       id: onboarding-profile
     timeout: 25000
-# Step 1: the only step the database requires (name, 18+ date of birth, gender).
+# Step 1: name, 18+ date of birth, gender.
 - tapOn:
     id: field-first-name
 - eraseText
@@ -54,40 +56,27 @@ tags:
     timeout: 20000
 - assertNotVisible:
     id: discover-screen
+# Step 2: at least 3 interests (catalog shipped by migration M-01).
 - tapOn:
-    id: onboarding-interests-secondary
+    id: interest-hiking
+- tapOn:
+    id: interest-yoga
+- tapOn:
+    id: interest-coffee
+- tapOn:
+    id: onboarding-interests-primary
 - extendedWaitUntil:
     visible:
       id: onboarding-preferences
     timeout: 20000
+# Step 3: "Everyone" stores every canonical gender value.
+- tapOn:
+    id: pref-genders-everyone
 - tapOn:
     id: onboarding-preferences-primary
 - extendedWaitUntil:
     visible:
       id: onboarding-photos
     timeout: 20000
-- tapOn:
-    id: onboarding-photos-secondary
-- extendedWaitUntil:
-    visible:
-      id: onboarding-ready
-    timeout: 20000
-- tapOn:
-    id: onboarding-ready-primary
-- extendedWaitUntil:
-    visible:
-      id: discover-screen
-    timeout: 20000
-- tapOn:
-    id: tab-profile
 - assertVisible:
-    id: profile-screen
-- scrollUntilVisible:
-    element:
-      id: profile-sign-out
-- tapOn:
-    id: profile-sign-out
-- extendedWaitUntil:
-    visible:
-      id: welcome-screen
-    timeout: 15000
+    id: photo-add

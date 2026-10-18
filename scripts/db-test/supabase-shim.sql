@@ -7,7 +7,7 @@
 -- pieces our migrations and tests depend on, mirroring Supabase defaults:
 --   * roles anon / authenticated / service_role (+ supabase_auth_admin)
 --   * schema auth with a reduced auth.users table and auth.uid()
---   * schema extensions (pgtap installed there)
+--   * schema extensions (run.sh then loads pgTAP into it)
 --   * Supabase's default privileges on schema public (grant all to API roles),
 --     so tests prove our migrations' explicit REVOKEs actually take effect.
 --   * schema storage: buckets/objects tables (RLS on, API roles granted, as on
@@ -55,7 +55,6 @@ grant execute on function auth.uid() to anon, authenticated, service_role;
 
 create schema extensions;
 grant usage on schema extensions to anon, authenticated, service_role;
-create extension pgtap with schema extensions;
 
 grant usage on schema public to anon, authenticated, service_role;
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;

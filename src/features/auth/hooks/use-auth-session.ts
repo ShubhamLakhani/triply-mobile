@@ -10,13 +10,23 @@ export interface AuthSessionState {
   /** A stored session could not be restored (offline / timeout); see AuthState. */
   restoreError: AuthState['restoreError'];
   retryRestore: () => void;
+  /** A recovery code was verified; the new password is not saved yet (see AuthState). */
+  passwordRecovery: boolean;
   signOut: () => Promise<void>;
 }
 
 /** Current session from the single app-level AuthProvider (no per-screen subscriptions). */
 export function useAuthSession(): AuthSessionState {
-  const { session, userId, isAuthenticated, isInitializing, restoreError, retryRestore, signOut } =
-    useAuth();
+  const {
+    session,
+    userId,
+    isAuthenticated,
+    isInitializing,
+    restoreError,
+    retryRestore,
+    passwordRecovery,
+    signOut,
+  } = useAuth();
   return {
     session,
     userId,
@@ -25,6 +35,7 @@ export function useAuthSession(): AuthSessionState {
     isInitializing,
     restoreError,
     retryRestore,
+    passwordRecovery,
     signOut,
   };
 }

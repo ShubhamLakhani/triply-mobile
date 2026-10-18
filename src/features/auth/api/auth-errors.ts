@@ -13,6 +13,9 @@ export type AuthErrorCode =
   | 'timeout'
   | 'link_expired'
   | 'link_invalid'
+  | 'code_invalid'
+  | 'code_expired'
+  | 'same_password'
   | 'unknown';
 
 /** Typed, user-safe auth error. `message` is a fixed sentence; the raw error stays in `cause`. */
@@ -28,7 +31,7 @@ export class AppAuthError extends Error {
 
 const MESSAGES: Record<AuthErrorCode, string> = {
   invalid_credentials: 'That email and password don’t match.',
-  email_not_confirmed: 'Please confirm your email first. Check your inbox for the link.',
+  email_not_confirmed: 'Confirm your email first with the 6-digit code we sent you.',
   email_taken: 'An account with this email already exists. Try signing in.',
   weak_password: 'Choose a stronger password (at least 8 characters).',
   rate_limited: 'Too many attempts. Please wait a moment and try again.',
@@ -41,6 +44,9 @@ const MESSAGES: Record<AuthErrorCode, string> = {
     'That link has expired or was already used. Sign in, or create your account again to get a new link.',
   link_invalid:
     'We couldn’t sign you in from that link. If you’ve confirmed your email, sign in to continue.',
+  code_invalid: 'That code isn’t right. Check the latest email and try again.',
+  code_expired: 'That code has expired. Send a new one and try again.',
+  same_password: 'Choose a password you haven’t used for this account before.',
   unknown: 'Something went wrong. Please try again.',
 };
 
@@ -53,6 +59,24 @@ interface SupabaseAuthErrorLike {
   status?: number;
   name?: string;
   message?: string;
+}
+
+/**
+ * How long an email code stays valid (Supabase Auth `otp_expiry`, config.toml and hosted:
+ * 3600 s). Supabase answers both a wrong and an expired code with `otp_expired`, so the app
+ * tells them apart by the time since the code was sent.
+ */
+export const EMAIL_CODE_TTL_MS = 60 * 60_000;
+
+/**
+ * Maps a failed code verification. `sentAt` is when the newest code was requested on this
+ * device (null when unknown, e.g. after an app restart).
+ */
+export function toCodeError(error: unknown, sentAt: number | null, now = Date.now()): AppAuthError {
+  const mapped = toAuthError(error);
+  if (mapped.code !== 'link_expired' && mapped.code !== 'invalid_input') return mapped;
+  const expired = sentAt !== null && now - sentAt >= EMAIL_CODE_TTL_MS;
+  return authError(expired ? 'code_expired' : 'code_invalid', mapped.cause);
 }
 
 /**
@@ -73,6 +97,8 @@ export function toAuthError(error: unknown): AppAuthError {
       return authError('email_taken', error);
     case 'weak_password':
       return authError('weak_password', error);
+    case 'same_password':
+      return authError('same_password', error);
     case 'over_request_rate_limit':
     case 'over_email_send_rate_limit':
       return authError('rate_limited', error);

@@ -12,7 +12,13 @@ Own profile data layer plus the Profile tab and edit screens (Phase 2M).
 - `components/ProfileScreen.tsx`: Profile tab (photo hero, name/age, about, interests,
   discovery summary, account/sign-out).
 - `components/Edit*Screen.tsx`: edit basics, interests, preferences, photos (routes under
-  `app/(tabs)/profile/*`, pushed inside the tab stack).
+  `app/(tabs)/profile/*`, pushed inside the tab stack). After onboarding: the date of birth is
+  read-only and never sent (the database locks it), interests cannot be saved below 3, gender
+  preferences cannot be saved empty, and the last photo can only be replaced.
+- `components/profile-messages.ts`: user-safe messages for profile, interest and preference
+  errors (incl. `under_18`, `date_of_birth_locked`, `account_inactive`).
+- Limits: bio optional, ≤ 500 characters. Server-owned: `is_profile_complete`,
+  `onboarding_completed_at`, `discovery_paused_at`; `is_discoverable` is deprecated and unread.
 - `age.ts`: `isAdult`, `ageFromDateOfBirth` (client-side mirrors; the database is the authority).
 
 Design notes: the date of birth uses three numeric fields instead of a native picker to avoid a

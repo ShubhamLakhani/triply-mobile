@@ -203,4 +203,79 @@ describe('PhotoManager', () => {
     await render(<PhotoManager userId={USER_ID} />, { wrapper });
     expect(screen.getByText('Couldn’t load')).toBeOnTheScreen();
   });
+
+  describe('after onboarding (protectLastPhoto)', () => {
+    it('offers Replace instead of Remove for the only photo', async () => {
+      const { wrapper } = setup([photo(1)]);
+      await render(<PhotoManager userId={USER_ID} protectLastPhoto />, { wrapper });
+      await fireEvent.press(screen.getByTestId('photo-tile-0'));
+      expect(screen.queryByTestId('photo-remove')).toBeNull();
+      expect(screen.getByTestId('photo-replace')).toBeOnTheScreen();
+      expect(screen.getByTestId('photo-last-hint')).toBeOnTheScreen();
+    });
+
+    it('replaces by uploading the new photo first, then deleting the old one', async () => {
+      const order: string[] = [];
+      const upload = jest.fn(async () => {
+        order.push('upload');
+        return photo(2, false);
+      });
+      const remove = jest.fn(async () => {
+        order.push('delete');
+        return { storagePath: 'x', objectRemoved: true };
+      });
+      const { wrapper } = setup([photo(1)], { upload, remove });
+      await render(<PhotoManager userId={USER_ID} protectLastPhoto />, { wrapper });
+      await fireEvent.press(screen.getByTestId('photo-tile-0'));
+      await fireEvent.press(screen.getByTestId('photo-replace'));
+      await waitFor(() => expect(remove).toHaveBeenCalledWith(photo(1).id));
+      expect(order).toEqual(['upload', 'delete']);
+    });
+
+    it('a cancelled picker keeps the existing photo untouched', async () => {
+      const { upload, remove, wrapper } = setup([photo(1)]);
+      jest
+        .mocked(ImagePicker.launchImageLibraryAsync)
+        .mockResolvedValue({ canceled: true, assets: null } as never);
+      await render(<PhotoManager userId={USER_ID} protectLastPhoto />, { wrapper });
+      await fireEvent.press(screen.getByTestId('photo-tile-0'));
+      await fireEvent.press(screen.getByTestId('photo-replace'));
+      expect(upload).not.toHaveBeenCalled();
+      expect(remove).not.toHaveBeenCalled();
+    });
+
+    it('explains a half-finished replace (new photo added, old one kept)', async () => {
+      const remove = jest.fn().mockRejectedValue(new PhotoError('unknown', 'network'));
+      const { wrapper } = setup([photo(1)], { remove });
+      await render(<PhotoManager userId={USER_ID} protectLastPhoto />, { wrapper });
+      await fireEvent.press(screen.getByTestId('photo-tile-0'));
+      await fireEvent.press(screen.getByTestId('photo-replace'));
+      expect(await screen.findByTestId('photo-error')).toHaveTextContent(/new photo was added/);
+    });
+
+    it('still allows removing a photo while two or more remain', async () => {
+      const { remove, wrapper } = setup([photo(1), photo(2)]);
+      await render(<PhotoManager userId={USER_ID} protectLastPhoto />, { wrapper });
+      await fireEvent.press(screen.getByTestId('photo-tile-1'));
+      await fireEvent.press(screen.getByTestId('photo-remove'));
+      expect(remove).toHaveBeenCalledWith(photo(2).id);
+    });
+
+    it('maps the server last-photo guard to a friendly message', async () => {
+      const remove = jest.fn().mockRejectedValue(new PhotoError('last_photo', 'x'));
+      const { wrapper } = setup([photo(1), photo(2)], { remove });
+      await render(<PhotoManager userId={USER_ID} protectLastPhoto />, { wrapper });
+      await fireEvent.press(screen.getByTestId('photo-tile-1'));
+      await fireEvent.press(screen.getByTestId('photo-remove'));
+      expect(await screen.findByTestId('photo-error')).toHaveTextContent(/at least one photo/);
+    });
+  });
+
+  it('before onboarding completes, the only photo can be removed', async () => {
+    const { remove, wrapper } = setup([photo(1)]);
+    await render(<PhotoManager userId={USER_ID} />, { wrapper });
+    await fireEvent.press(screen.getByTestId('photo-tile-0'));
+    await fireEvent.press(screen.getByTestId('photo-remove'));
+    expect(remove).toHaveBeenCalledWith(photo(1).id);
+  });
 });

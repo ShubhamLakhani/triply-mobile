@@ -29,7 +29,9 @@ const profile: Profile = {
   home_country: 'Portugal',
   occupation: 'Nurse',
   is_profile_complete: true,
-  is_discoverable: false,
+  // Not completed yet: the date of birth is still editable (see the locked tests below).
+  onboarding_completed_at: null,
+  discovery_paused_at: null,
   created_at: '',
   updated_at: '',
 };
@@ -43,6 +45,7 @@ function setup(current: Profile | undefined = profile) {
     session: null,
     restoreError: null,
     retryRestore: jest.fn(),
+    passwordRecovery: false,
     signOut: jest.fn(),
   });
   jest
@@ -95,6 +98,8 @@ describe('EditProfileScreen', () => {
       'id',
       'is_profile_complete',
       'is_discoverable',
+      'onboarding_completed_at',
+      'discovery_paused_at',
       'created_at',
       'updated_at',
     ]) {
@@ -114,6 +119,36 @@ describe('EditProfileScreen', () => {
     expect(await screen.findByText('Tell us your first name.')).toBeOnTheScreen();
     expect(await screen.findByText(/18 or over/)).toBeOnTheScreen();
     expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('after onboarding, shows the date of birth read-only and never sends it', async () => {
+    const { mutateAsync } = setup({ ...profile, onboarding_completed_at: '2026-10-11T10:00:00Z' });
+    await render(<EditProfileScreen />);
+    for (const id of ['field-dob-day', 'field-dob-month', 'field-dob-year']) {
+      expect(screen.getByTestId(id).props.editable).toBe(false);
+    }
+    expect(screen.getByText(/can’t be changed after sign-up/)).toBeOnTheScreen();
+
+    await fireEvent.changeText(screen.getByTestId('field-bio'), 'Mountains over beaches.');
+    await fireEvent.press(screen.getByTestId('edit-profile-save'));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+    const payload = mutateAsync.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty('date_of_birth');
+    expect(payload).toMatchObject({ bio: 'Mountains over beaches.' });
+  });
+
+  it('caps the bio at 500 characters', async () => {
+    setup();
+    await render(<EditProfileScreen />);
+    expect(screen.getByTestId('field-bio').props.maxLength).toBe(500);
+  });
+
+  it('explains an inactive account from the server', async () => {
+    const { mutateAsync } = setup({ ...profile, onboarding_completed_at: '2026-10-11T10:00:00Z' });
+    mutateAsync.mockRejectedValueOnce(new ProfileError('account_inactive', 'inactive'));
+    await render(<EditProfileScreen />);
+    await fireEvent.press(screen.getByTestId('edit-profile-save'));
+    expect(await screen.findByText('Your account can’t make changes right now.')).toBeOnTheScreen();
   });
 
   it('shows a friendly message when the server rejects the save', async () => {

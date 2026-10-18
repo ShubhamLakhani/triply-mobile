@@ -1,6 +1,8 @@
 import { act, fireEvent, renderRouter, screen } from 'expo-router/testing-library';
 import type { useSyncExternalStore as import_useSyncExternalStore } from 'react';
 
+import { useOwnAccountState } from '@/features/account/hooks/use-account-state';
+import type { AccountStatus } from '@/features/account/types';
 import { RootNavigator } from '@/features/auth/components/RootNavigator';
 import type { AuthSessionState } from '@/features/auth/hooks/use-auth-session';
 import { clearOnboardingProgress, markStepCompleted } from '@/features/onboarding/progress';
@@ -33,12 +35,16 @@ jest.mock('@/features/auth/hooks/use-auth-session', () => {
       ),
   };
 });
-// Only the link-error notice on the auth screens reads the provider directly.
+// Only the link-error notice and the password reset screen read the provider directly.
 const mockLinkState = {
   linkError: null as { message: string } | null,
   dismissLinkError: jest.fn(),
+  passwordRecovery: false,
+  finishPasswordRecovery: jest.fn(),
+  signOut: jest.fn().mockResolvedValue(undefined),
 };
 jest.mock('@/features/auth/providers/AuthProvider', () => ({ useAuth: () => mockLinkState }));
+jest.mock('@/features/account/hooks/use-account-state', () => ({ useOwnAccountState: jest.fn() }));
 jest.mock('@/features/profile/hooks/use-own-profile', () => ({
   useOwnProfile: jest.fn(),
   useUpdateProfile: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
@@ -90,16 +96,38 @@ function setAuth(state: Partial<AuthSessionState>) {
     isInitializing: false,
     restoreError: null,
     retryRestore,
+    passwordRecovery: false,
     signOut,
     ...state,
   });
   return { signOut, retryRestore };
 }
 
-function setProfile(complete: boolean | null, extra: Record<string, unknown> = {}) {
+function setAccount(
+  status: AccountStatus | null,
+  extra: Record<string, unknown> = {},
+  suspendedUntil: string | null = null,
+) {
+  const refetch = jest.fn();
+  jest.mocked(useOwnAccountState).mockReturnValue({
+    data: status === null ? undefined : { status, suspended_until: suspendedUntil },
+    error: null,
+    isLoading: status === null,
+    fetchStatus: 'idle',
+    refetch,
+    ...extra,
+  } as unknown as ReturnType<typeof useOwnAccountState>);
+  return { refetch };
+}
+
+/** `incomplete`: core profile missing · `core`: core done, onboarding not completed on the
+ * server · `onboarded`: onboarding_completed_at set. */
+type ProfileState = 'incomplete' | 'core' | 'onboarded' | null;
+
+function setProfile(state: ProfileState, extra: Record<string, unknown> = {}) {
   jest.mocked(useOwnProfile).mockReturnValue({
     data:
-      complete === null
+      state === null
         ? undefined
         : {
             id: USER_ID,
@@ -110,13 +138,14 @@ function setProfile(complete: boolean | null, extra: Record<string, unknown> = {
             home_city: null,
             home_country: null,
             occupation: null,
-            is_profile_complete: complete,
-            is_discoverable: false,
+            is_profile_complete: state !== 'incomplete',
+            onboarding_completed_at: state === 'onboarded' ? '2026-10-11T10:00:00Z' : null,
+            discovery_paused_at: null,
             created_at: '',
             updated_at: '',
           },
     error: null,
-    isLoading: complete === null,
+    isLoading: state === null,
     isError: false,
     refetch: jest.fn(),
     ...extra,
@@ -124,9 +153,11 @@ function setProfile(complete: boolean | null, extra: Record<string, unknown> = {
 }
 
 describe('root routing guards', () => {
+  beforeEach(() => setAccount('active'));
   afterEach(async () => {
     await act(async () => clearOnboardingProgress(USER_ID));
     mockLinkState.linkError = null;
+    mockLinkState.passwordRecovery = false;
     jest.clearAllMocks();
   });
 
@@ -155,7 +186,7 @@ describe('root routing guards', () => {
 
   it('sends signed-in users with an incomplete profile to onboarding', async () => {
     setAuth({ userId: USER_ID, isAuthenticated: true });
-    setProfile(false);
+    setProfile('incomplete');
     const { wrapper } = createTestProviders();
     const router = renderRouter(routes, { initialUrl: '/', wrapper });
     await router;
@@ -163,9 +194,20 @@ describe('root routing guards', () => {
     expect(router.getPathname()).toBe('/onboarding');
   });
 
-  it('resumes a complete-but-unfinished onboarding at the next step', async () => {
+  it('keeps a complete core profile in onboarding until the server records completion', async () => {
     setAuth({ userId: USER_ID, isAuthenticated: true });
-    setProfile(true);
+    setProfile('core');
+    // No local marker at all (e.g. a new device): still onboarding, resumed after the profile.
+    const { wrapper } = createTestProviders();
+    const router = renderRouter(routes, { initialUrl: '/discover', wrapper });
+    await router;
+    expect(await screen.findByTestId('onboarding-interests')).toBeOnTheScreen();
+    expect(screen.queryByTestId('discover-screen')).toBeNull();
+  });
+
+  it('resumes an unfinished onboarding at the next step', async () => {
+    setAuth({ userId: USER_ID, isAuthenticated: true });
+    setProfile('core');
     markStepCompleted(USER_ID, 'profile');
     const { wrapper } = createTestProviders();
     const router = renderRouter(routes, { initialUrl: '/', wrapper });
@@ -174,9 +216,10 @@ describe('root routing guards', () => {
     expect(router.getPathname()).toBe('/onboarding/interests');
   });
 
-  it('sends complete profiles into the tabs', async () => {
+  it('sends onboarded accounts into the tabs, even with a stale local marker', async () => {
     setAuth({ userId: USER_ID, isAuthenticated: true });
-    setProfile(true);
+    setProfile('onboarded');
+    markStepCompleted(USER_ID, 'interests');
     const { wrapper } = createTestProviders();
     const router = renderRouter(routes, { initialUrl: '/', wrapper });
     await router;
@@ -186,7 +229,7 @@ describe('root routing guards', () => {
 
   it('re-evaluates the route when the account signs out', async () => {
     setAuth({ userId: USER_ID, isAuthenticated: true });
-    setProfile(true);
+    setProfile('onboarded');
     const { wrapper } = createTestProviders();
     const router = renderRouter(routes, { initialUrl: '/profile', wrapper });
     await router;
@@ -250,5 +293,77 @@ describe('root routing guards', () => {
     const router = renderRouter(routes, { initialUrl: '/', wrapper });
     await router;
     expect(await screen.findByTestId('bootstrap-error')).toBeOnTheScreen();
+  });
+
+  it.each([
+    ['suspended', /account is suspended/],
+    ['banned', /no longer available/],
+    ['deletion_pending', /being deleted/],
+  ] as const)(
+    'shows the restricted screen (not the app) for a %s account',
+    async (status, copy) => {
+      setAuth({ userId: USER_ID, isAuthenticated: true });
+      setProfile('onboarded');
+      setAccount(status);
+      const { wrapper } = createTestProviders();
+      const router = renderRouter(routes, { initialUrl: '/discover', wrapper });
+      await router;
+      expect(await screen.findByTestId('restricted-account-screen')).toBeOnTheScreen();
+      expect(screen.getByTestId(`restricted-status-${status}`)).toHaveTextContent(copy);
+      expect(screen.queryByTestId('discover-screen')).toBeNull();
+      expect(screen.queryByTestId('onboarding-profile')).toBeNull();
+    },
+  );
+
+  it('a suspension shows its end date and only offers sign-out', async () => {
+    const { signOut } = setAuth({ userId: USER_ID, isAuthenticated: true });
+    setProfile('core');
+    setAccount('suspended', {}, '2026-11-01T00:00:00Z');
+    const { wrapper } = createTestProviders();
+    const router = renderRouter(routes, { initialUrl: '/', wrapper });
+    await router;
+    expect(await screen.findByTestId('restricted-until')).toHaveTextContent(/Suspended until/);
+    await fireEvent.press(screen.getByTestId('restricted-sign-out'));
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for the account state, and offers retry when it fails to load', async () => {
+    setAuth({ userId: USER_ID, isAuthenticated: true });
+    setProfile('onboarded');
+    const { refetch } = setAccount(null, {
+      error: new Error('offline'),
+      isError: true,
+      isLoading: false,
+    });
+    const { wrapper } = createTestProviders();
+    const router = renderRouter(routes, { initialUrl: '/', wrapper });
+    await router;
+    expect(await screen.findByTestId('bootstrap-error')).toBeOnTheScreen();
+    expect(screen.getByTestId('bootstrap-error-message')).toHaveTextContent(
+      /couldn’t load your account/,
+    );
+    await fireEvent.press(screen.getByTestId('bootstrap-retry'));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a verified password recovery on the reset screen instead of the app', async () => {
+    setAuth({ userId: USER_ID, isAuthenticated: true, passwordRecovery: true });
+    mockLinkState.passwordRecovery = true;
+    setProfile('onboarded');
+    const { wrapper } = createTestProviders();
+    const router = renderRouter(routes, { initialUrl: '/forgot-password', wrapper });
+    await router;
+    expect(await screen.findByTestId('reset-password-screen')).toBeOnTheScreen();
+    expect(screen.queryByTestId('discover-screen')).toBeNull();
+  });
+
+  it('opens forgot password and the code screen from the signed-out area', async () => {
+    setAuth({});
+    setProfile(null);
+    const { wrapper } = createTestProviders();
+    const router = renderRouter(routes, { initialUrl: '/sign-in', wrapper });
+    await router;
+    await fireEvent.press(await screen.findByTestId('link-forgot-password'));
+    expect(await screen.findByTestId('reset-email-screen')).toBeOnTheScreen();
   });
 });

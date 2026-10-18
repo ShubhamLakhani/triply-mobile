@@ -1,0 +1,34 @@
+# Continues onboarding-fresh-account.yaml after a photo was added by hand (same app session):
+# Ready → complete_onboarding() on the server → Discover → sign out.
+appId: cc.toolmint.triply.dev
+name: Backend - finish onboarding, then sign out
+tags:
+  - backend
+---
+- assertVisible:
+    id: onboarding-photos
+- tapOn:
+    id: onboarding-photos-primary
+- extendedWaitUntil:
+    visible:
+      id: onboarding-ready
+    timeout: 20000
+- tapOn:
+    id: onboarding-ready-primary
+- extendedWaitUntil:
+    visible:
+      id: discover-screen
+    timeout: 20000
+- tapOn:
+    id: tab-profile
+- assertVisible:
+    id: profile-screen
+- scrollUntilVisible:
+    element:
+      id: profile-sign-out
+- tapOn:
+    id: profile-sign-out
+- extendedWaitUntil:
+    visible:
+      id: welcome-screen
+    timeout: 15000

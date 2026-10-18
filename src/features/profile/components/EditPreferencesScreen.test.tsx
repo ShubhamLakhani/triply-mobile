@@ -4,6 +4,7 @@ import { useAuthSession } from '@/features/auth/hooks/use-auth-session';
 import {
   fetchOwnDiscoveryPreferences,
   fetchOwnGenderPreferences,
+  setGenderPreferences,
   updateDiscoveryPreferences,
 } from '@/features/preferences/api/preference-api';
 
@@ -32,6 +33,7 @@ describe('EditPreferencesScreen', () => {
       isInitializing: false,
       restoreError: null,
       retryRestore: jest.fn(),
+      passwordRecovery: false,
       signOut: jest.fn(),
     });
   });
@@ -46,7 +48,6 @@ describe('EditPreferencesScreen', () => {
         min_age: 25,
         max_age: 35,
         minimum_overlap_days: 2,
-        max_distance_km: null,
         created_at: '',
         updated_at: '',
       });
@@ -67,6 +68,46 @@ describe('EditPreferencesScreen', () => {
     // Still nothing to save until the user changes something.
     expect(screen.getByTestId('edit-preferences-save').props.accessibilityState.disabled).toBe(
       true,
+    );
+  });
+
+  it('cannot save with no gender preference; Everyone saves every canonical value', async () => {
+    const saved = {
+      user_id: USER_ID,
+      min_age: 25,
+      max_age: 35,
+      minimum_overlap_days: 2,
+      created_at: '',
+      updated_at: '',
+    };
+    jest.mocked(fetchOwnDiscoveryPreferences).mockResolvedValue(saved);
+    jest.mocked(fetchOwnGenderPreferences).mockResolvedValue(['woman']);
+    jest.mocked(updateDiscoveryPreferences).mockResolvedValue(saved);
+    jest
+      .mocked(setGenderPreferences)
+      .mockResolvedValue(['man', 'woman', 'non_binary', 'other', 'prefer_not_to_say']);
+    const { wrapper } = createTestProviders();
+    await render(<EditPreferencesScreen />, { wrapper });
+    await screen.findByTestId('pref-genders');
+
+    // Deselect the only choice: Save stays disabled and the field explains why.
+    await fireEvent.press(screen.getByTestId('pref-genders-woman'));
+    expect(await screen.findByText('Choose at least one option.')).toBeOnTheScreen();
+    expect(screen.getByTestId('edit-preferences-save').props.accessibilityState.disabled).toBe(
+      true,
+    );
+
+    await fireEvent.press(screen.getByTestId('pref-genders-everyone'));
+    expect(screen.getByTestId('pref-genders-everyone').props.accessibilityState.checked).toBe(true);
+    await fireEvent.press(screen.getByTestId('edit-preferences-save'));
+    await waitFor(() =>
+      expect(setGenderPreferences).toHaveBeenCalledWith([
+        'man',
+        'woman',
+        'non_binary',
+        'other',
+        'prefer_not_to_say',
+      ]),
     );
   });
 });

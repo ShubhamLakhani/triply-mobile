@@ -20,4 +20,8 @@ export interface AnalyticsEventMap extends AnalyticsEventMapBase {
   photo_upload_completed: { photo_count: number };
   sign_in_completed: { method: 'password' };
   sign_up_completed: { method: 'password'; needs_email_confirmation: boolean };
+  sign_up_code_verified: Record<never, never>;
+  sign_up_code_resent: Record<never, never>;
+  password_reset_requested: Record<never, never>;
+  password_reset_completed: Record<never, never>;
 }

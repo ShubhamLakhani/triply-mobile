@@ -9,6 +9,8 @@ import { BootstrapScreen } from '@/features/auth/components/BootstrapScreen';
  */
 export default function Index() {
   const { area, home } = useAppArea();
-  if (area === 'bootstrap' || area === 'error' || !home) return <BootstrapScreen />;
+  if (area === 'bootstrap' || area === 'error' || area === 'restricted' || !home) {
+    return <BootstrapScreen />;
+  }
   return <Redirect href={home as never} />;
 }

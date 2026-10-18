@@ -54,6 +54,8 @@ export function usePreferencesDraft(userId: string | null) {
       if (saved) setDraft(next);
     },
     isDirty,
+    /** At least one gender preference (required to continue and to save once complete). */
+    meetsMinimum: value !== null && value.genders.length > 0,
     isLoading: status === 'loading',
     isError: status === 'error',
     /** Saved values are shown from cache because the latest refresh failed. */

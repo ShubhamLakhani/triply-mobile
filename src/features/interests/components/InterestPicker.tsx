@@ -6,7 +6,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { spacing } from '@/theme';
 
-import { MAX_INTERESTS, type InterestSummary } from '../types';
+import { MAX_INTERESTS, MIN_INTERESTS, type InterestSummary } from '../types';
 
 export interface InterestPickerProps {
   catalog: InterestSummary[] | undefined;
@@ -21,7 +21,10 @@ function categoryTitle(category: string | null): string {
   return category.replace(/-/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 }
 
-/** Multi-select chips grouped by category with a live "n of 10" count; locks at the limit. */
+/**
+ * Multi-select chips grouped by category with a live "n of 8" count (at least 3 needed);
+ * locks at the limit.
+ */
 export function InterestPicker({
   catalog,
   selectedIds,
@@ -56,7 +59,7 @@ export function InterestPicker({
   if (catalog && catalog.length === 0) {
     return (
       <AppText variant="body" color="textSecondary" testID={testID ? `${testID}-empty` : undefined}>
-        There are no interests to choose from yet. You can add them later from your profile.
+        Interests aren’t available right now. Please try again in a moment.
       </AppText>
     );
   }
@@ -71,7 +74,9 @@ export function InterestPicker({
       >
         {atLimit
           ? `${MAX_INTERESTS} of ${MAX_INTERESTS} chosen — remove one to swap`
-          : `${selectedIds.length} of ${MAX_INTERESTS} chosen`}
+          : selectedIds.length < MIN_INTERESTS
+            ? `${selectedIds.length} of ${MAX_INTERESTS} chosen — pick at least ${MIN_INTERESTS}`
+            : `${selectedIds.length} of ${MAX_INTERESTS} chosen`}
       </AppText>
       {groups.map(([title, interests]) => (
         <View key={title} style={styles.group}>

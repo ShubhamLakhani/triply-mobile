@@ -27,7 +27,8 @@ const baseProfile: Profile = {
   home_country: null,
   occupation: null,
   is_profile_complete: true,
-  is_discoverable: false,
+  onboarding_completed_at: null,
+  discovery_paused_at: null,
   created_at: '2026-10-09T00:00:00Z',
   updated_at: '2026-10-09T00:00:00Z',
 };
@@ -66,7 +67,7 @@ describe('own profile hooks', () => {
   });
 
   it('writes the canonical database row to the cache and invalidates after update', async () => {
-    const updated = { ...baseProfile, is_discoverable: true };
+    const updated = { ...baseProfile, bio: 'Slow travel.' };
     jest.mocked(updateOwnProfile).mockResolvedValue(updated);
     jest.mocked(fetchOwnProfile).mockResolvedValue(updated);
     const { wrapper, queryClient } = setup();
@@ -75,11 +76,11 @@ describe('own profile hooks', () => {
 
     const { result } = await renderHook(() => useUpdateProfile(USER_ID), { wrapper });
     await act(async () => {
-      await result.current.mutateAsync({ is_discoverable: true });
+      await result.current.mutateAsync({ bio: 'Slow travel.' });
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(updateOwnProfile).toHaveBeenCalledWith(USER_ID, { is_discoverable: true });
+    expect(updateOwnProfile).toHaveBeenCalledWith(USER_ID, { bio: 'Slow travel.' });
     expect(queryClient.getQueryData(profileKeys.own(USER_ID))).toEqual(updated);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: profileKeys.own(USER_ID) });
     queryClient.clear();

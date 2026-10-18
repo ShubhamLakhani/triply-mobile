@@ -1,0 +1,20 @@
+# Continues sign-up-check-email.yaml in the SAME app session (no relaunch): types the 6-digit
+# code from the confirmation email and lands on the first onboarding step.
+#   maestro test -e TRIPLY_E2E_CODE=123456 tests/e2e/maestro/flows/backend/sign-up-verify-code.yaml
+appId: cc.toolmint.triply.dev
+name: Backend - verify the sign-up code
+tags:
+  - backend
+---
+- assertVisible:
+    id: verify-email-screen
+- tapOn:
+    id: verify-email-code
+- inputText: ${TRIPLY_E2E_CODE}
+# The sixth digit submits automatically; the button is a fallback.
+- extendedWaitUntil:
+    visible:
+      id: onboarding-profile
+    timeout: 25000
+- assertNotVisible:
+    id: discover-screen

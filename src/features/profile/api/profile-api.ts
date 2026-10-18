@@ -5,9 +5,12 @@ import type { Profile } from '../types';
 
 import { ProfileError, toProfileError } from './profile-errors';
 
-/** Explicit column list: never `select *`, so new columns are opted in deliberately. */
+/**
+ * Explicit column list: never `select *`, so new columns are opted in deliberately. The
+ * deprecated is_discoverable is not read (it is dropped in Phase 4M).
+ */
 export const PROFILE_COLUMNS =
-  'id, first_name, date_of_birth, gender, bio, home_city, home_country, occupation, is_profile_complete, is_discoverable, created_at, updated_at';
+  'id, first_name, date_of_birth, gender, bio, home_city, home_country, occupation, is_profile_complete, onboarding_completed_at, discovery_paused_at, created_at, updated_at';
 
 /** Reads the signed-in user's own profile (RLS only exposes the caller's row). */
 export async function fetchOwnProfile(userId: string): Promise<Profile> {
@@ -22,7 +25,7 @@ export async function fetchOwnProfile(userId: string): Promise<Profile> {
 
 /**
  * Updates editable fields on the caller's own profile and returns the canonical row
- * (including database-computed is_profile_complete / normalised is_discoverable).
+ * (including the database-computed is_profile_complete).
  */
 export async function updateOwnProfile(
   userId: string,

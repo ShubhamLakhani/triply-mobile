@@ -18,11 +18,13 @@ function EditProfileForm({ userId, profile }: { userId: string | null; profile: 
   const update = useUpdateProfile(userId);
   const form = useProfileBasicsForm(profile);
   const [error, setError] = useState<string | null>(null);
+  // The database locks the date of birth once onboarding is complete.
+  const dobLocked = profile.onboarding_completed_at !== null;
 
   const submit = form.handleSubmit(async (values) => {
     setError(null);
     try {
-      await update.mutateAsync(toProfileUpdate(values));
+      await update.mutateAsync(toProfileUpdate(values, { dobLocked }));
       router.back();
     } catch (cause) {
       setError(profileErrorMessage(cause));
@@ -37,7 +39,7 @@ function EditProfileForm({ userId, profile }: { userId: string | null; profile: 
       error={error}
       testID="edit-profile"
     >
-      <ProfileBasicsFields form={form} />
+      <ProfileBasicsFields form={form} dobLocked={dobLocked} />
     </EditScreenShell>
   );
 }

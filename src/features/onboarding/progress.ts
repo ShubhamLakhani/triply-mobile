@@ -2,7 +2,10 @@ import { useCallback, useSyncExternalStore } from 'react';
 
 import { getDeviceLocalStorage } from '@/services/storage/local-storage';
 
-/** Ordered onboarding steps. `profile` is the only step the database requires. */
+/**
+ * Ordered onboarding steps. Every step before `ready` is required: complete_onboarding() on the
+ * Ready step checks them all server-side and sets profiles.onboarding_completed_at.
+ */
 export const ONBOARDING_STEPS = ['profile', 'interests', 'preferences', 'photos', 'ready'] as const;
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 
@@ -35,7 +38,8 @@ function storage(): Storage | null {
 
 /**
  * Local, per-user record of the furthest step COMPLETED on this device (never sensitive data:
- * it holds a step name only). `null` means onboarding is not in progress here.
+ * it holds a step name only). It only decides where onboarding resumes; whether onboarding is
+ * finished is always the server's onboarding_completed_at.
  */
 export function getCompletedStep(userId: string): OnboardingStep | null {
   const value = storage()?.getItem(key(userId));
@@ -49,15 +53,6 @@ export function markStepCompleted(userId: string, step: OnboardingStep): void {
   if (current && stepIndex(current) >= stepIndex(step)) return;
   storage()?.setItem(key(userId), step);
   emit();
-}
-
-/** Starts tracking (so a user with a complete profile stays in onboarding until `ready`). */
-export function markOnboardingStarted(userId: string): void {
-  if (getCompletedStep(userId) === null) {
-    storage()?.setItem(key(userId), 'profile');
-    // 'profile' as a marker only means "started"; resume logic re-checks the server row.
-    emit();
-  }
 }
 
 export function clearOnboardingProgress(userId: string): void {
@@ -91,7 +86,7 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-/** Reactive view of the local progress marker for one user. */
+/** Reactive view of the local resume marker for one user. */
 export function useOnboardingProgress(userId: string | null) {
   const read = useCallback(() => (userId ? getCompletedStep(userId) : null), [userId]);
   const completedStep = useSyncExternalStore(subscribe, read, read);

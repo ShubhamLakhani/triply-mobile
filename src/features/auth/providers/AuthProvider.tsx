@@ -40,6 +40,14 @@ export interface AuthState {
   /** The latest auth deep-link problem (expired or invalid link), shown by the auth screens. */
   linkError: AppAuthError | null;
   dismissLinkError: () => void;
+  /**
+   * True after a recovery code was verified (Supabase signed the user in with
+   * PASSWORD_RECOVERY) and until a new password is saved or the user signs out. The router keeps
+   * the user on the reset screen meanwhile. Memory only: after an app restart the verified
+   * session simply continues (the code proved ownership of the email).
+   */
+  passwordRecovery: boolean;
+  finishPasswordRecovery: () => void;
   signOut: () => Promise<void>;
 }
 
@@ -61,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isInitializing, setIsInitializing] = useState(true);
   const [restoreError, setRestoreError] = useState<AppAuthError | null>(null);
   const [linkError, setLinkError] = useState<AppAuthError | null>(null);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const cacheReset = useRef(createAuthCacheReset(queryClient));
 
@@ -95,10 +104,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = subscribeToAuthChanges((event, next) => {
       if (!active) return;
       cacheReset.current(event, next);
+      // Same callback as the session update, so the router never sees the recovery session
+      // without the flag (no flash into onboarding/app before the new password is set).
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
       setSession(next);
       if (next) setRestoreError(null);
       if (event === 'SIGNED_OUT') {
         setRestoreError(null);
+        setPasswordRecovery(false);
         analytics.reset();
       }
     });
@@ -138,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const dismissLinkError = useCallback(() => setLinkError(null), []);
+  const finishPasswordRecovery = useCallback(() => setPasswordRecovery(false), []);
 
   const value = useMemo<AuthState>(
     () => ({
@@ -150,6 +164,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       retryRestore,
       linkError,
       dismissLinkError,
+      passwordRecovery: session !== null && passwordRecovery,
+      finishPasswordRecovery,
       signOut,
     }),
     [
@@ -160,6 +176,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       retryRestore,
       linkError,
       dismissLinkError,
+      passwordRecovery,
+      finishPasswordRecovery,
       signOut,
     ],
   );

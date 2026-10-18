@@ -6,12 +6,14 @@ exists in the app, so the flows cannot silently drift from the code.
 
 ## Flows
 
-| Flow                                          | Backend                    | What it proves                                                                                                           |
-| --------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `flows/smoke-tab-shell.yaml`                  | none                       | Fresh install lands on Welcome (tabs guarded); Sign up / Sign in reachable; on-device validation; back navigation.       |
-| `flows/backend/sign-up-check-email.yaml`      | **creates an account**     | Sign-up request settles within the auth budget and reaches check-your-email.                                             |
-| `flows/backend/onboarding-fresh-account.yaml` | writes profile/preferences | Confirmed, never-onboarded account: profile → interests → preferences → photos → ready → Discover (no detour), sign out. |
-| `flows/backend/sign-in-existing.yaml`         | read only                  | Confirmed, onboarded account: sign in → tabs → edit profile → sign out → relaunch stays signed out.                      |
+| Flow                                          | Backend                              | What it proves                                                                                                                       |
+| --------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `flows/smoke-tab-shell.yaml`                  | none                                 | Fresh install lands on Welcome (tabs guarded); Sign up / Sign in / Forgot password reachable; on-device validation; back navigation. |
+| `flows/backend/sign-up-check-email.yaml`      | **creates an account**               | Sign-up settles within the auth budget and reaches the 6-digit code screen (resend on cooldown).                                     |
+| `flows/backend/sign-up-verify-code.yaml`      | confirms that account                | Same app session: typing the emailed code signs in and lands on onboarding (no link, no tabs).                                       |
+| `flows/backend/onboarding-fresh-account.yaml` | writes profile/interests/preferences | Confirmed, never-onboarded account: profile → 3 interests → "Everyone" → photos step (no detour through the tabs).                   |
+| `flows/backend/onboarding-finish.yaml`        | completes onboarding                 | After adding a photo by hand (system picker): photos → ready → `complete_onboarding` → Discover, sign out.                           |
+| `flows/backend/sign-in-existing.yaml`         | read only                            | Confirmed, onboarded account: sign in → tabs → edit profile → sign out → relaunch stays signed out.                                  |
 
 `maestro test tests/e2e/maestro` runs only the top-level (no-backend) flows. Backend flows are
 run one by one, with credentials passed as Maestro env vars (never committed):
@@ -21,9 +23,10 @@ maestro test -e TRIPLY_E2E_EMAIL=you@example.com -e TRIPLY_E2E_PASSWORD='…' \
   tests/e2e/maestro/flows/backend/sign-in-existing.yaml
 ```
 
-Use the **Development** Supabase project only. Email confirmation links must be opened on the
-same simulator/device that signed up (PKCE: the code verifier lives in that install), e.g.
-`xcrun simctl openurl booted '<link from the email>'`.
+Use the **Development** Supabase project only. Sign-up and password reset use a 6-digit code
+from the email (any device can read it; nothing is bound to the install). The pending sign-up
+email is kept in memory only, so run `sign-up-verify-code.yaml` in the same app session
+(`-e TRIPLY_E2E_CODE=123456`) without relaunching.
 
 ## Run locally
 

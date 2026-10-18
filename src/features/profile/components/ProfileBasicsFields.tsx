@@ -11,7 +11,7 @@ import { spacing } from '@/theme';
 
 import { MINIMUM_AGE } from '../age';
 import { profileBasicsFormSchema, toFormValues } from '../schemas/profile-form.schema';
-import type { Gender, Profile } from '../types';
+import { BIO_MAX_LENGTH, type Gender, type Profile } from '../types';
 
 export const GENDER_OPTIONS: readonly { value: Gender; label: string }[] = [
   { value: 'woman', label: 'Woman' },
@@ -38,10 +38,19 @@ export interface ProfileBasicsFieldsProps {
   form: ProfileBasicsForm;
   /** Hide the "about you" fields (onboarding keeps the first step short). */
   compact?: boolean;
+  /**
+   * Date of birth is read-only (onboarding complete: the database rejects changes, and the
+   * update payload leaves it out). Corrections go through support.
+   */
+  dobLocked?: boolean;
 }
 
 /** The basic profile fields. Required: first name, date of birth (18+), gender. */
-export function ProfileBasicsFields({ form, compact = false }: ProfileBasicsFieldsProps) {
+export function ProfileBasicsFields({
+  form,
+  compact = false,
+  dobLocked = false,
+}: ProfileBasicsFieldsProps) {
   const { control, setFocus } = form;
   // Subscribe explicitly: `form.formState` is mutated in place on a stable object, so with the
   // React Compiler this component would never re-render for it and date-of-birth errors
@@ -83,8 +92,12 @@ export function ProfileBasicsFields({ form, compact = false }: ProfileBasicsFiel
 
       <FormField
         label="Date of birth"
-        error={dobError}
-        helper={`Triply is for adults only (${MINIMUM_AGE}+). Your age is shown, never your birthday.`}
+        error={dobLocked ? undefined : dobError}
+        helper={
+          dobLocked
+            ? 'Your date of birth can’t be changed after sign-up. Contact support if it’s wrong.'
+            : `Triply is for adults only (${MINIMUM_AGE}+). Your age is shown, never your birthday.`
+        }
       >
         <View style={styles.dobRow}>
           <Controller
@@ -100,7 +113,8 @@ export function ProfileBasicsFields({ form, compact = false }: ProfileBasicsFiel
                   if (text.length === 2) monthRef.current?.focus();
                 }}
                 onBlur={field.onBlur}
-                invalid={Boolean(dobError)}
+                invalid={!dobLocked && Boolean(dobError)}
+                editable={!dobLocked}
                 placeholder="DD"
                 keyboardType="number-pad"
                 maxLength={2}
@@ -125,7 +139,8 @@ export function ProfileBasicsFields({ form, compact = false }: ProfileBasicsFiel
                   if (text.length === 2) yearRef.current?.focus();
                 }}
                 onBlur={field.onBlur}
-                invalid={Boolean(dobError)}
+                invalid={!dobLocked && Boolean(dobError)}
+                editable={!dobLocked}
                 placeholder="MM"
                 keyboardType="number-pad"
                 maxLength={2}
@@ -147,7 +162,8 @@ export function ProfileBasicsFields({ form, compact = false }: ProfileBasicsFiel
                 value={field.value}
                 onChangeText={(text) => field.onChange(text.replace(/\D/g, ''))}
                 onBlur={field.onBlur}
-                invalid={Boolean(dobError)}
+                invalid={!dobLocked && Boolean(dobError)}
+                editable={!dobLocked}
                 placeholder="YYYY"
                 keyboardType="number-pad"
                 maxLength={4}
@@ -190,7 +206,7 @@ export function ProfileBasicsFields({ form, compact = false }: ProfileBasicsFiel
                 label="Bio"
                 optional
                 error={fieldState.error?.message}
-                meta={`${field.value.length}/1000`}
+                meta={`${field.value.length}/${BIO_MAX_LENGTH}`}
               >
                 <AppInput
                   value={field.value}
@@ -199,7 +215,7 @@ export function ProfileBasicsFields({ form, compact = false }: ProfileBasicsFiel
                   invalid={Boolean(fieldState.error)}
                   placeholder="What kind of traveller are you? What are you hoping to find?"
                   multiline
-                  maxLength={1000}
+                  maxLength={BIO_MAX_LENGTH}
                   accessibilityLabel="Bio"
                   testID="field-bio"
                 />

@@ -29,7 +29,7 @@ export function useCurrentProfile() {
 
 /**
  * Updates editable own-profile fields. On success the canonical row returned by the
- * database (with recomputed is_profile_complete / is_discoverable) replaces the cache.
+ * database (with recomputed is_profile_complete) replaces the cache.
  */
 export function useUpdateProfile(userId: string | null) {
   const queryClient = useQueryClient();

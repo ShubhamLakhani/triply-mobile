@@ -1,10 +1,11 @@
+import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { FormField } from '@/components/forms/FormField';
 import { OptionGroup } from '@/components/forms/OptionGroup';
 import { Stepper } from '@/components/forms/Stepper';
 import { GENDER_OPTIONS } from '@/features/profile/components/ProfileBasicsFields';
-import type { Gender } from '@/features/profile/types';
+import { GENDERS, type Gender } from '@/features/profile/types';
 import { spacing } from '@/theme';
 
 import { PREFERENCE_LIMITS } from '../types';
@@ -35,30 +36,70 @@ export const GENDER_PREFERENCE_OPTIONS = GENDER_OPTIONS.map((option) => ({
             : 'Non-binary people',
 }));
 
+/** UI-only option: "Everyone" is stored as every canonical gender value (no DB sentinel). */
+export const EVERYONE = 'everyone' as const;
+type GenderChoice = Gender | typeof EVERYONE;
+
+const GENDER_CHOICE_OPTIONS: readonly {
+  value: GenderChoice;
+  label: string;
+  description?: string;
+}[] = [
+  {
+    value: EVERYONE,
+    label: 'Everyone',
+    description: 'Any gender, including people who prefer not to say.',
+  },
+  ...GENDER_PREFERENCE_OPTIONS,
+];
+
+export function isEveryone(genders: readonly Gender[]): boolean {
+  return GENDERS.every((gender) => genders.includes(gender));
+}
+
+/**
+ * Applies a tap on a gender option. "Everyone" selects every value (or clears them all when
+ * everything is already selected); an individual value toggles just that value, so deselecting
+ * one from "Everyone" leaves the other four selected. Output is in canonical order.
+ */
+export function toggleGenderPreference(current: readonly Gender[], choice: GenderChoice): Gender[] {
+  if (choice === EVERYONE) return isEveryone(current) ? [] : [...GENDERS];
+  const next = current.includes(choice)
+    ? current.filter((gender) => gender !== choice)
+    : [...current, choice];
+  return GENDERS.filter((gender) => next.includes(gender));
+}
+
 export function formatOverlapDays(days: number): string {
   return days === 1 ? '1 day' : `${days} days`;
 }
 
-/** Discovery preferences: who you want to meet, age range, and minimum trip overlap. */
+/**
+ * Discovery preferences: who you want to meet (at least one, or Everyone), age range, and
+ * minimum trip overlap.
+ */
 export function PreferencesFields({ value, onChange }: PreferencesFieldsProps) {
-  const toggleGender = (gender: Gender) =>
-    onChange({
-      ...value,
-      genders: value.genders.includes(gender)
-        ? value.genders.filter((g) => g !== gender)
-        : [...value.genders, gender],
-    });
+  const [touchedGenders, setTouchedGenders] = useState(false);
+  const selected: GenderChoice[] = isEveryone(value.genders)
+    ? [EVERYONE, ...value.genders]
+    : value.genders;
 
   return (
     <View style={styles.root}>
       <FormField
         label="I’d like to meet"
-        helper="Choose as many as you like. Leaving all unselected means everyone."
+        helper="Choose at least one, or Everyone."
+        error={
+          touchedGenders && value.genders.length === 0 ? 'Choose at least one option.' : undefined
+        }
       >
         <OptionGroup
-          options={GENDER_PREFERENCE_OPTIONS}
-          value={value.genders}
-          onChange={toggleGender}
+          options={GENDER_CHOICE_OPTIONS}
+          value={selected}
+          onChange={(choice) => {
+            setTouchedGenders(true);
+            onChange({ ...value, genders: toggleGenderPreference(value.genders, choice) });
+          }}
           multiple
           accessibilityLabel="Genders you want to meet"
           testID="pref-genders"

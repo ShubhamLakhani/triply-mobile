@@ -7,10 +7,8 @@ import type { InterestSummary, OwnInterest } from '../types';
 import { useInterestSelection } from './use-interest-selection';
 
 jest.mock('../api/interest-api', () => ({
-  addInterest: jest.fn(),
   fetchActiveInterests: jest.fn(),
   fetchOwnInterests: jest.fn(),
-  removeInterest: jest.fn(),
   replaceOwnInterests: jest.fn(),
 }));
 
@@ -91,5 +89,19 @@ describe('useInterestSelection', () => {
       await result.current.save();
     });
     expect(replaceOwnInterests).toHaveBeenCalledWith(['i-food', 'i-yoga', 'i-surf']);
+  });
+
+  it('meetsMinimum only between 3 and 8 selected interests', async () => {
+    jest.mocked(fetchActiveInterests).mockResolvedValue(catalog);
+    jest.mocked(fetchOwnInterests).mockResolvedValue(own(['i-food', 'i-yoga']));
+    const { wrapper } = createTestProviders();
+    const { result } = await renderHook(() => useInterestSelection(USER_ID), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.meetsMinimum).toBe(false);
+    await act(async () => result.current.toggle('i-surf'));
+    expect(result.current.selectedIds).toHaveLength(3);
+    expect(result.current.meetsMinimum).toBe(true);
+    await act(async () => result.current.toggle('i-food'));
+    expect(result.current.meetsMinimum).toBe(false);
   });
 });

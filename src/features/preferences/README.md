@@ -7,9 +7,13 @@ The signed-in user's discovery preferences (see `supabase/README.md → Preferen
 - `api/preference-keys.ts`: `preferenceKeys.discovery(userId)`, `preferenceKeys.genders(userId)`
 - `hooks/use-preferences.ts`: `useDiscoveryPreferences`, `useUpdateDiscoveryPreferences`,
   `useGenderPreferences`, `useSetGenderPreferences`
-- `schemas/preferences.schema.ts`: age 18–99 (max ≥ min), overlap 1–60 days, optional
-  distance 1–20000 km, gender values from `GENDERS`
+- `schemas/preferences.schema.ts`: age 18–99 (max ≥ min), overlap 1–60 days, gender values
+  from `GENDERS`
+- `components/PreferencesFields.tsx`: the fields; `toggleGenderPreference` / `isEveryone`
 
 The preferences row is created automatically with the profile, so the app only reads and
-updates it. "Everyone" means selecting all gender values; an empty list means not configured
-yet. `max_distance_km` is future-facing only: Triply never collects live location.
+updates it. At least one gender preference is required to finish onboarding and to save once
+onboarding is complete (`gender_required`, SQLSTATE `TR003`). **"Everyone"** is a UI option that
+stores every canonical gender value (there is no `everyone` value in the database); deselecting
+one value from Everyone keeps the other four. `max_distance_km` is deprecated: not read, not
+writable (no location-based matching), dropped in Phase 4M.

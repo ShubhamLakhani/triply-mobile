@@ -182,4 +182,34 @@ describe('AuthProvider', () => {
     });
     expect(signOut).toHaveBeenCalledTimes(1);
   });
+
+  it('holds a verified password recovery until the new password is saved', async () => {
+    const ctx = setup(null);
+    const { result } = await renderHook(() => useAuth(), { wrapper: ctx.wrapper });
+    await act(async () => {});
+    expect(result.current.passwordRecovery).toBe(false);
+
+    // verifyOtp(type: 'recovery') signs the user in with PASSWORD_RECOVERY (one event).
+    await act(async () => ctx.emit('PASSWORD_RECOVERY', sessionFor('u1')));
+    expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.passwordRecovery).toBe(true);
+    // Later session events (e.g. USER_UPDATED, token refresh) do not end the hold by themselves.
+    await act(async () => ctx.emit('USER_UPDATED', sessionFor('u1')));
+    expect(result.current.passwordRecovery).toBe(true);
+
+    await act(async () => result.current.finishPasswordRecovery());
+    expect(result.current.passwordRecovery).toBe(false);
+  });
+
+  it('a sign-out during recovery clears the hold', async () => {
+    const ctx = setup(null);
+    const { result } = await renderHook(() => useAuth(), { wrapper: ctx.wrapper });
+    await act(async () => {});
+    await act(async () => ctx.emit('PASSWORD_RECOVERY', sessionFor('u1')));
+    await act(async () => ctx.emit('SIGNED_OUT', null));
+    expect(result.current.passwordRecovery).toBe(false);
+    // A later normal sign-in is not treated as a recovery.
+    await act(async () => ctx.emit('SIGNED_IN', sessionFor('u1')));
+    expect(result.current.passwordRecovery).toBe(false);
+  });
 });

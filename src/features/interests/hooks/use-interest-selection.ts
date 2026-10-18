@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+import { MAX_INTERESTS, MIN_INTERESTS } from '../types';
+
 import { useInterests, useOwnInterests, useReplaceInterests } from './use-interests';
 
 /**
@@ -58,6 +60,8 @@ export function useInterestSelection(userId: string | null) {
     selectedIds,
     toggle,
     isDirty,
+    /** 3–8 selected: required to continue onboarding and for every save once complete. */
+    meetsMinimum: selectedIds.length >= MIN_INTERESTS && selectedIds.length <= MAX_INTERESTS,
     save: () => {
       if (!ready) return Promise.reject(new Error('Interests are not loaded yet.'));
       return replace.mutateAsync(selectedIds);

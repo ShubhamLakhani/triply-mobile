@@ -1,5 +1,8 @@
 -- =============================================================================
 -- Phase 1M-B · public.profiles security & lifecycle tests (pgTAP)
+-- Updated Pre-3M (M-03): under-18 dates of birth are rejected at write, bio is
+-- capped at 500, is_discoverable is deprecated (not writable, always false).
+-- Onboarding completion / post-onboarding guards: onboarding_model.test.sql.
 --
 -- Run against the local Supabase stack:   npx supabase test db
 -- Run without Docker (plain PostgreSQL):  npm run test:db
@@ -10,7 +13,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(48);
+select plan(46);
 
 -- Fixed test identities --------------------------------------------------------
 -- A: main user · B: second user (cross-user checks) · C: deleted user · D: metadata spoof
@@ -139,12 +142,11 @@ select is(
   (select is_profile_complete from public.profiles where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
   true, '18th birthday today counts as adult');
 
-update public.profiles
-   set date_of_birth = (current_date - interval '18 years' + interval '1 day')::date
- where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-select is(
-  (select is_profile_complete from public.profiles where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
-  false, 'one day short of 18 cannot be complete');
+select throws_ok(
+  $$ update public.profiles
+        set date_of_birth = (current_date - interval '18 years' + interval '1 day')::date
+      where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' $$,
+  '23514', 'you must be 18 or older', 'a date of birth one day short of 18 is rejected at write');
 
 select throws_ok(
   $$ update public.profiles set date_of_birth = current_date + 1
@@ -162,9 +164,9 @@ select throws_ok(
       where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' $$,
   '23514', null, 'first_name longer than 80 characters is rejected');
 select throws_ok(
-  $$ update public.profiles set bio = repeat('x', 1001)
+  $$ update public.profiles set bio = repeat('x', 501)
       where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' $$,
-  '23514', null, 'bio longer than 1000 characters is rejected');
+  '23514', null, 'bio longer than 500 characters is rejected');
 
 update public.profiles
    set date_of_birth = (current_date - interval '30 years')::date, first_name = '   '
@@ -180,43 +182,22 @@ select is(
   (select is_profile_complete from public.profiles where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
   true, 'profile is complete again after restoring first_name');
 
--- Discoverability ---------------------------------------------------------------
-select lives_ok(
-  $$ update public.profiles set is_discoverable = true where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' $$,
-  'a complete adult profile may become discoverable');
-select is(
-  (select is_discoverable from public.profiles where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
-  true, 'discoverable preference is stored');
-
-update public.profiles
-   set date_of_birth = (current_date - interval '17 years')::date
- where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-select results_eq(
-  $$ select is_profile_complete, is_discoverable from public.profiles
-      where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' $$,
-  $$ values (false, false) $$,
-  'changing DOB to under 18 forces incomplete and not discoverable');
-
+-- Deprecated discoverability flag + under-18 rejection ----------------------------
 select throws_ok(
   $$ update public.profiles set is_discoverable = true where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' $$,
-  '23514', null, 'an under-18 profile cannot request discoverability');
-
-update public.profiles
-   set date_of_birth = (current_date - interval '30 years')::date, is_discoverable = true
- where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-update public.profiles set gender = null where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-select results_eq(
-  $$ select is_profile_complete, is_discoverable from public.profiles
-      where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' $$,
-  $$ values (false, false) $$,
-  'removing a required field forces discoverable=false');
-
-update public.profiles
-   set gender = 'woman', is_discoverable = true
- where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  '42501', null, 'deprecated is_discoverable is not writable by clients');
 select is(
   (select is_discoverable from public.profiles where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
-  true, 'completing the profile and opting in in one update is allowed');
+  false, 'is_discoverable stays false for a complete profile');
+select throws_ok(
+  $$ update public.profiles set date_of_birth = (current_date - interval '17 years')::date
+      where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' $$,
+  '23514', 'you must be 18 or older', 'changing the date of birth to under 18 is rejected');
+select results_eq(
+  $$ select date_of_birth = (current_date - interval '30 years')::date, is_profile_complete
+       from public.profiles where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' $$,
+  $$ values (true, true) $$,
+  'a rejected date of birth leaves the profile unchanged');
 
 -- =============================================================================
 -- AUTHENTICATED AS USER B (incomplete profile)
@@ -232,7 +213,7 @@ select is(
   false, 'discoverable defaults to false');
 select throws_ok(
   $$ update public.profiles set is_discoverable = true where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' $$,
-  '23514', null, 'an incomplete profile cannot become discoverable');
+  '42501', null, 'an incomplete profile cannot write is_discoverable either');
 select lives_ok(
   $$ update public.profiles set bio = 'B was here' where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' $$,
   'B''s update of A runs but RLS matches no rows');
@@ -266,9 +247,10 @@ update public.profiles set is_profile_complete = true where id = 'bbbbbbbb-bbbb-
 select is(
   (select is_profile_complete from public.profiles where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'),
   false, 'is_profile_complete cannot be forced true even by privileged writes');
-select throws_ok(
-  $$ update public.profiles set is_discoverable = true where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' $$,
-  '23514', null, 'privileged writes cannot force an incomplete profile to be discoverable');
+update public.profiles set is_discoverable = true where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+select is(
+  (select is_discoverable from public.profiles where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+  false, 'deprecated is_discoverable stays false even for privileged writes');
 
 -- Privilege surface -----------------------------------------------------------------
 select ok(

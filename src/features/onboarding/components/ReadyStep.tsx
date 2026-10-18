@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { router } from 'expo-router';
+import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeInUp, ZoomIn } from 'react-native-reanimated';
 
@@ -11,44 +12,85 @@ import { useMotionPreference } from '@/hooks/use-motion-preference';
 import { useAnalytics } from '@/services/analytics';
 import { colors, radius, spacing } from '@/theme';
 
+import { OnboardingError, type OnboardingRequirement } from '../api/onboarding-api';
+import { useCompleteOnboarding } from '../hooks/use-complete-onboarding';
 import { useOnboardingStep } from '../hooks/use-onboarding-step';
-import { clearOnboardingProgress } from '../progress';
+import { clearOnboardingProgress, STEP_ROUTES, type OnboardingStep } from '../progress';
 
 import { OnboardingShell } from './OnboardingShell';
 
-/** Final step: re-check the server row, then hand over to the app. */
+const REQUIREMENT_STEP: Record<OnboardingRequirement, OnboardingStep> = {
+  profile: 'profile',
+  interests: 'interests',
+  gender_preferences: 'preferences',
+  age_range: 'preferences',
+  photos: 'photos',
+};
+
+const REQUIREMENT_LABEL: Record<OnboardingRequirement, string> = {
+  profile: 'your name, date of birth and gender',
+  interests: '3 to 8 interests',
+  gender_preferences: 'who you’d like to meet',
+  age_range: 'an age range',
+  photos: 'at least one photo',
+};
+
+/** In onboarding-step order, so "Fix it" goes to the earliest unmet step. */
+function sortMissing(missing: OnboardingRequirement[]): OnboardingRequirement[] {
+  const order: OnboardingRequirement[] = [
+    'profile',
+    'interests',
+    'gender_preferences',
+    'age_range',
+    'photos',
+  ];
+  return order.filter((item) => missing.includes(item));
+}
+
+/**
+ * Final step: the server validates every requirement and records completion
+ * (complete_onboarding). The updated profile row flips the root guard to the app.
+ */
 export function ReadyStep() {
   const { userId, profile, back } = useOnboardingStep('ready');
   const photos = useOwnProfilePhotos(userId);
   const interests = useOwnInterests(userId);
+  const complete = useCompleteOnboarding(userId);
   const analytics = useAnalytics();
   const { reduceMotion, duration } = useMotionPreference();
   const [error, setError] = useState<string | null>(null);
+  const [missing, setMissing] = useState<OnboardingRequirement[]>([]);
 
-  const { refetch } = profile;
-  useEffect(() => {
-    void refetch();
-  }, [refetch]);
-
-  const complete = profile.data?.is_profile_complete === true;
   const name = profile.data?.first_name;
+  const fixStep = missing[0] ? REQUIREMENT_STEP[missing[0]] : null;
 
-  const finish = () => {
+  const finish = async () => {
     setError(null);
-    if (!complete) {
-      setError(
-        'Your profile isn’t complete yet. Go back and check your name, date of birth and gender.',
-      );
-      return;
+    setMissing([]);
+    try {
+      await complete.mutateAsync();
+      analytics.track('onboarding_completed', {
+        photo_count: photos.data?.length ?? 0,
+        interest_count: interests.data?.length ?? 0,
+      });
+      if (userId) clearOnboardingProgress(userId);
+    } catch (cause) {
+      if (cause instanceof OnboardingError && cause.code === 'incomplete') {
+        const sorted = sortMissing(cause.missing);
+        setMissing(sorted);
+        setError(
+          sorted.length > 0
+            ? `Almost there. Still needed: ${sorted.map((item) => REQUIREMENT_LABEL[item]).join(', ')}.`
+            : 'Your profile isn’t complete yet. Go back and check each step.',
+        );
+      } else if (cause instanceof OnboardingError && cause.code === 'account_inactive') {
+        setError('Your account can’t make changes right now.');
+      } else {
+        setError(
+          'We couldn’t finish setting up your profile. Check your connection and try again.',
+        );
+      }
     }
-    analytics.track('onboarding_completed', {
-      photo_count: photos.data?.length ?? 0,
-      interest_count: interests.data?.length ?? 0,
-    });
-    // Clearing the marker flips the root guard to `app`; the navigator then drops the
-    // onboarding group and the entry route redirects to Discover. Navigating here directly
-    // would target the tabs while they are still guarded.
-    if (userId) clearOnboardingProgress(userId);
   };
 
   return (
@@ -57,10 +99,10 @@ export function ReadyStep() {
       title={name ? `You’re all set, ${name}` : 'You’re all set'}
       subtitle="Add a trip when you’re ready and we’ll show you who else will be there."
       primaryLabel="Start exploring"
-      onPrimary={finish}
-      // Wait for the server re-check started on mount; only a complete row may exit.
-      primaryLoading={profile.isFetching}
-      primaryDisabled={profile.data === undefined}
+      onPrimary={() => void finish()}
+      primaryLoading={complete.isPending}
+      secondaryLabel={fixStep ? 'Fix it now' : undefined}
+      onSecondary={fixStep ? () => router.replace(STEP_ROUTES[fixStep] as never) : undefined}
       onBack={back}
       error={error}
       hideProgress
@@ -80,8 +122,8 @@ export function ReadyStep() {
         <Surface tone="tinted">
           <AppText variant="bodyStrong">What happens next</AppText>
           <AppText variant="small" color="textSecondary">
-            Your profile is private until you add a trip. Only travellers with overlapping dates at
-            the same destination will see you.
+            Your profile is private until you add a trip. Only travellers with overlapping dates in
+            the same place will see you.
           </AppText>
         </Surface>
       </Animated.View>

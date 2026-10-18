@@ -12,6 +12,7 @@ import type { AppAreaProblem } from '../routing/resolve-area';
 const PROBLEM_COPY: Record<AppAreaProblem, string> = {
   session: 'We couldn’t restore your session. Check your connection and try again.',
   profile: 'We couldn’t load your profile. Check your connection and try again.',
+  account: 'We couldn’t load your account. Check your connection and try again.',
   offline: 'You’re offline. Connect to the internet and try again.',
 };
 

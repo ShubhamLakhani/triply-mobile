@@ -26,6 +26,12 @@ import { PhotoTile } from './PhotoTile';
 
 export interface PhotoManagerProps {
   userId: string | null;
+  /**
+   * Onboarding is complete: the profile must always keep one photo (the database rejects
+   * deleting the last one), so with a single photo "Remove" becomes "Replace" (add the new
+   * photo first, then delete the old one).
+   */
+  protectLastPhoto?: boolean;
   testID?: string;
 }
 
@@ -44,6 +50,12 @@ export function photoErrorMessage(error: unknown): string {
           : error.message;
       case 'upload_failed':
         return 'Upload didn’t finish. Check your connection and try again.';
+      case 'last_photo':
+        return 'Your profile needs at least one photo. Use Replace to swap it.';
+      case 'replace_incomplete':
+        return 'Your new photo was added, but the old one couldn’t be removed. Try removing it again.';
+      case 'account_inactive':
+        return 'Your account can’t make changes right now.';
       case 'not_authenticated':
         return 'Please sign in again to manage photos.';
       default:
@@ -58,7 +70,11 @@ export function photoErrorMessage(error: unknown): string {
  * reveals labelled actions (make main, move, remove) rather than relying on drag, so reordering
  * works identically on Android and with assistive tech.
  */
-export function PhotoManager({ userId, testID = 'photo-manager' }: PhotoManagerProps) {
+export function PhotoManager({
+  userId,
+  protectLastPhoto = false,
+  testID = 'photo-manager',
+}: PhotoManagerProps) {
   const analytics = useAnalytics();
   const { reduceMotion, duration } = useMotionPreference();
   const { width } = useWindowDimensions();
@@ -80,6 +96,7 @@ export function PhotoManager({ userId, testID = 'photo-manager' }: PhotoManagerP
   const emptySlots = Math.max(0, MAX_PROFILE_PHOTOS - count - (upload.isPending ? 1 : 0));
   const tileSize = Math.floor((width - spacing.md * 2 - spacing.xs * (COLUMNS - 1)) / COLUMNS);
   const busy = upload.isPending || remove.isPending || setPrimary.isPending || reorder.isPending;
+  const mustReplace = protectLastPhoto && count === 1;
 
   const run = useCallback(async (action: () => Promise<unknown>) => {
     setError(null);
@@ -96,6 +113,21 @@ export function PhotoManager({ userId, testID = 'photo-manager' }: PhotoManagerP
       if (!picked) return;
       await upload.mutateAsync(picked);
       analytics.track('photo_upload_completed', { photo_count: count + 1 });
+    });
+
+  /** Swap the only photo: the new one is registered before the old one is deleted. */
+  const onReplace = (oldId: string) =>
+    run(async () => {
+      const picked = await pickProfilePhoto();
+      if (!picked) return;
+      await upload.mutateAsync(picked);
+      analytics.track('photo_upload_completed', { photo_count: count + 1 });
+      try {
+        await remove.mutateAsync(oldId);
+      } catch (cause) {
+        throw new PhotoError('replace_incomplete', 'Old photo was not removed.', { cause });
+      }
+      setSelectedId(null);
     });
 
   const move = (direction: -1 | 1) => {
@@ -208,18 +240,33 @@ export function PhotoManager({ userId, testID = 'photo-manager' }: PhotoManagerP
               testID="photo-move-right"
             />
           </View>
-          <AppButton
-            label="Remove photo"
-            variant="destructive"
-            disabled={busy}
-            onPress={() =>
-              void run(async () => {
-                await remove.mutateAsync(selected.id);
-                setSelectedId(null);
-              })
-            }
-            testID="photo-remove"
-          />
+          {mustReplace ? (
+            <>
+              <AppButton
+                label="Replace photo"
+                variant="secondary"
+                disabled={busy}
+                onPress={() => void onReplace(selected.id)}
+                testID="photo-replace"
+              />
+              <AppText variant="caption" color="textSecondary" testID="photo-last-hint">
+                Your profile needs at least one photo, so this one can be replaced but not removed.
+              </AppText>
+            </>
+          ) : (
+            <AppButton
+              label="Remove photo"
+              variant="destructive"
+              disabled={busy}
+              onPress={() =>
+                void run(async () => {
+                  await remove.mutateAsync(selected.id);
+                  setSelectedId(null);
+                })
+              }
+              testID="photo-remove"
+            />
+          )}
         </Animated.View>
       ) : null}
 

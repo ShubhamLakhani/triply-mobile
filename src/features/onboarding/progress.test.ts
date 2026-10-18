@@ -1,7 +1,6 @@
 import {
   clearOnboardingProgress,
   getCompletedStep,
-  markOnboardingStarted,
   markStepCompleted,
   resolveResumeStep,
   STEP_ROUTES,
@@ -49,11 +48,11 @@ describe('onboarding progress', () => {
     expect(getCompletedStep(B)).toBeNull();
   });
 
-  it('started marker keeps a complete profile inside onboarding until finished', () => {
-    markOnboardingStarted(A);
-    expect(getCompletedStep(A)).toBe('profile');
+  it('clearing the marker forgets the resume position (completion is server-side)', () => {
+    markStepCompleted(A, 'interests');
     clearOnboardingProgress(A);
     expect(getCompletedStep(A)).toBeNull();
+    expect(resolveResumeStep(true, getCompletedStep(A))).toBe('interests');
   });
 
   it('maps every step to a route', () => {

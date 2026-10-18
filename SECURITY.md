@@ -81,7 +81,15 @@ open to every signed-in user.
 - **Session.** Supabase JS with `expo-sqlite` `localStorage` persistence, as Supabase
   recommends for Expo. It is not hardware-encrypted, so it relies on device encryption.
   Auto-refresh runs only while the app is in the foreground. The app never logs tokens.
-- **Auth links (Phase 2M hardening).** The client uses the PKCE flow. Only
+- **Email codes (Pre-3M).** Sign-up confirmation and password reset use 6-digit codes typed in
+  the app (`verifyOtp` types `email` / `recovery`); emails contain no link. Codes expire after
+  1 hour, only the newest works, resend is limited to once per 60 s, and verification is rate
+  limited by Supabase Auth. The reset request never reveals whether an email has an account. A
+  verified recovery code signs the user in; the router keeps them on the new-password screen
+  until the password is saved or they sign out. Password minimum is 8 (app, local config and
+  hosted settings).
+- **Auth links (Phase 2M hardening; DEPRECATED, kept one release for old emails).** The client
+  uses the PKCE flow. Only
   `<this install's scheme>://auth/callback?code=…` is acted on; the code is exchanged with the
   verifier stored on the device, so a link crafted or intercepted elsewhere cannot sign anyone
   in. Raw `access_token` / `refresh_token` links are rejected (never passed to `setSession`),
@@ -124,6 +132,16 @@ open to every signed-in user.
   content or PII; identity is the opaque user UUID. The catalogue (`events.ts`) forbids content.
 - **Data access.** Screens never import the Supabase client; all access goes through feature
   `api/` modules.
+- **Account status (Pre-3M).** `public.account_states` has no client privileges; the app reads
+  its own effective status through `get_my_account_state()` (never the internal safety hold).
+  Every profile, preference, interest, photo and onboarding write calls
+  `private.assert_active_actor()` (SQLSTATE `TR001`), so a suspended or banned user cannot act by
+  calling RPCs directly. The restricted-account screen is UX only.
+- **Server-owned onboarding state (Pre-3M).** `onboarding_completed_at` is set only by
+  `complete_onboarding()` after server-side validation and can never change or clear;
+  `discovery_paused_at` only through `set_discovery_paused`. Direct client writes to interest and
+  gender-preference rows are revoked (RPC-only), so post-onboarding minimums cannot be bypassed.
+  Under-18 dates of birth are rejected at write; the date of birth is locked after onboarding.
 
 ## 6. Adversarial test matrix (pgTAP, `npm run test:db`)
 

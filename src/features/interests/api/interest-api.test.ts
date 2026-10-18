@@ -3,12 +3,10 @@ import { getSupabaseClient } from '@/services/supabase';
 import { createFakeSupabase, type FakeResult } from '../../../../tests/utils/fake-supabase';
 
 import {
-  addInterest,
   fetchActiveInterests,
   fetchOwnInterests,
   INTEREST_COLUMNS,
   OWN_INTEREST_SELECT,
-  removeInterest,
   replaceOwnInterests,
 } from './interest-api';
 import { InterestError } from './interest-errors';
@@ -38,24 +36,6 @@ describe('interest api', () => {
     expect(calls).toContainEqual({ method: 'eq', args: ['user_id', USER_ID] });
   });
 
-  it('adds and removes a single interest for the session user', async () => {
-    let calls = useFake({ data: null, error: null });
-    await addInterest(USER_ID, INTEREST_ID);
-    expect(calls).toContainEqual({
-      method: 'insert',
-      args: [{ user_id: USER_ID, interest_id: INTEREST_ID }],
-    });
-
-    calls = useFake({ data: null, error: null });
-    await removeInterest(USER_ID, INTEREST_ID);
-    expect(calls).toEqual([
-      { method: 'from', args: ['profile_interests'] },
-      { method: 'delete', args: [] },
-      { method: 'eq', args: ['user_id', USER_ID] },
-      { method: 'eq', args: ['interest_id', INTEREST_ID] },
-    ]);
-  });
-
   it('replaces the selection atomically through the RPC', async () => {
     const calls = useFake({ data: [{ interest_id: INTEREST_ID }], error: null });
     await expect(replaceOwnInterests([INTEREST_ID, INTEREST_ID])).resolves.toEqual([INTEREST_ID]);
@@ -66,12 +46,12 @@ describe('interest api', () => {
 
   it('validates input before calling Supabase', async () => {
     const calls = useFake({ data: null, error: null });
-    await expect(addInterest(USER_ID, 'hiking')).rejects.toMatchObject({ code: 'invalid_input' });
-    const eleven = Array.from(
-      { length: 11 },
+    await expect(replaceOwnInterests(['hiking'])).rejects.toMatchObject({ code: 'invalid_input' });
+    const nine = Array.from(
+      { length: 9 },
       (_, i) => `e0000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
     );
-    await expect(replaceOwnInterests(eleven)).rejects.toMatchObject({ code: 'invalid_input' });
+    await expect(replaceOwnInterests(nine)).rejects.toMatchObject({ code: 'invalid_input' });
     expect(calls).toHaveLength(0);
   });
 
@@ -80,9 +60,11 @@ describe('interest api', () => {
     ['23505', 'already_selected'],
     ['23503', 'interest_unavailable'],
     ['42501', 'not_allowed'],
+    ['TR003', 'minimum_required'],
+    ['TR001', 'account_inactive'],
   ])('maps database error %s to %s', async (code, expected) => {
     useFake({ data: null, error: { code, message: 'db error' } });
-    const error = await addInterest(USER_ID, INTEREST_ID).catch((e: unknown) => e);
+    const error = await replaceOwnInterests([INTEREST_ID]).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(InterestError);
     expect(error).toMatchObject({ code: expected });
   });

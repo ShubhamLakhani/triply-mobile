@@ -5,15 +5,25 @@ import { TimeoutError } from '@/utils/timeout';
 import {
   AUTH_REQUEST_TIMEOUT_MS,
   getCurrentSession,
-  resendSignUpEmail,
+  requestPasswordReset,
+  resendSignUpCode,
   signInWithPassword,
   signOut,
   signUpWithPassword,
+  updatePassword,
+  verifyRecoveryCode,
+  verifySignUpCode,
 } from './auth-api';
-import { AppAuthError, toAuthError } from './auth-errors';
+import { AppAuthError, EMAIL_CODE_TTL_MS, toAuthError, toCodeError } from './auth-errors';
 
 jest.mock('@/services/supabase', () => ({ getSupabaseClient: jest.fn() }));
-jest.mock('./auth-links', () => ({ getAuthRedirectUrl: () => 'triply-dev://auth/callback' }));
+
+const SESSION = { user: { id: 'u1' } };
+const WRONG_OR_EXPIRED = {
+  code: 'otp_expired',
+  status: 403,
+  message: 'Token has expired or is invalid',
+};
 
 function useAuthClient(auth: Record<string, jest.Mock>) {
   jest
@@ -55,11 +65,8 @@ describe('auth api', () => {
     await expect(
       signUpWithPassword({ email: 'a@b.co', password: 'password123' }),
     ).resolves.toMatchObject({ needsEmailConfirmation: true });
-    expect(auth.signUp).toHaveBeenCalledWith({
-      email: 'a@b.co',
-      password: 'password123',
-      options: { emailRedirectTo: 'triply-dev://auth/callback' },
-    });
+    // Code flow: no redirect / confirmation link options are sent.
+    expect(auth.signUp).toHaveBeenCalledWith({ email: 'a@b.co', password: 'password123' });
     useAuthClient({
       signUp: jest.fn().mockResolvedValue({
         data: { session: { user: { id: 'u1' } }, user: { id: 'u1' } },
@@ -71,14 +78,10 @@ describe('auth api', () => {
     ).resolves.toMatchObject({ needsEmailConfirmation: false });
   });
 
-  it('resends the confirmation email', async () => {
+  it('resends the sign-up code without any redirect link', async () => {
     const auth = useAuthClient({ resend: jest.fn().mockResolvedValue({ error: null }) });
-    await resendSignUpEmail('a@b.co');
-    expect(auth.resend).toHaveBeenCalledWith({
-      type: 'signup',
-      email: 'a@b.co',
-      options: { emailRedirectTo: 'triply-dev://auth/callback' },
-    });
+    await resendSignUpCode(' A@B.co ');
+    expect(auth.resend).toHaveBeenCalledWith({ type: 'signup', email: 'a@b.co' });
   });
 
   it('maps Supabase error codes to stable, user-safe codes', () => {
@@ -106,6 +109,106 @@ describe('auth api', () => {
     expect(toAuthError({ code: 'bad_code_verifier' }).code).toBe('link_invalid');
     const existing = toAuthError({ code: 'weak_password' });
     expect(toAuthError(existing)).toBe(existing);
+  });
+});
+
+describe('email codes', () => {
+  afterEach(() => jest.clearAllMocks());
+
+  it('verifies the sign-up code with the normalised email', async () => {
+    const auth = useAuthClient({
+      verifyOtp: jest.fn().mockResolvedValue({ data: { session: SESSION }, error: null }),
+    });
+    await expect(
+      verifySignUpCode({ email: ' Maya@Example.com', code: '123 456', sentAt: Date.now() }),
+    ).resolves.toBe(SESSION);
+    expect(auth.verifyOtp).toHaveBeenCalledWith({
+      email: 'maya@example.com',
+      token: '123456',
+      type: 'email',
+    });
+  });
+
+  it('rejects a malformed code before calling Supabase', async () => {
+    const auth = useAuthClient({ verifyOtp: jest.fn() });
+    await expect(
+      verifySignUpCode({ email: 'a@b.co', code: '12345', sentAt: null }),
+    ).rejects.toMatchObject({ code: 'code_invalid' });
+    await expect(
+      verifySignUpCode({ email: 'a@b.co', code: 'abcdef', sentAt: null }),
+    ).rejects.toMatchObject({ code: 'code_invalid' });
+    expect(auth.verifyOtp).not.toHaveBeenCalled();
+  });
+
+  it('tells a wrong code from an expired one by the time since it was sent', async () => {
+    useAuthClient({
+      verifyOtp: jest.fn().mockResolvedValue({ data: { session: null }, error: WRONG_OR_EXPIRED }),
+    });
+    await expect(
+      verifySignUpCode({ email: 'a@b.co', code: '000000', sentAt: Date.now() - 60_000 }),
+    ).rejects.toMatchObject({ code: 'code_invalid' });
+    await expect(
+      verifySignUpCode({ email: 'a@b.co', code: '000000', sentAt: Date.now() - EMAIL_CODE_TTL_MS }),
+    ).rejects.toMatchObject({ code: 'code_expired' });
+    // Unknown send time (e.g. after a restart): never claim "expired".
+    await expect(
+      verifySignUpCode({ email: 'a@b.co', code: '000000', sentAt: null }),
+    ).rejects.toMatchObject({ code: 'code_invalid' });
+  });
+
+  it('keeps rate-limit and network failures as they are', () => {
+    expect(toCodeError({ code: 'over_request_rate_limit', status: 429 }, null).code).toBe(
+      'rate_limited',
+    );
+    expect(toCodeError({ name: 'AuthRetryableFetchError', status: 0 }, null).code).toBe('network');
+  });
+
+  it('requests a password reset code (no redirect link)', async () => {
+    const auth = useAuthClient({
+      resetPasswordForEmail: jest.fn().mockResolvedValue({ data: {}, error: null }),
+    });
+    await requestPasswordReset(' A@B.co');
+    expect(auth.resetPasswordForEmail).toHaveBeenCalledWith('a@b.co');
+  });
+
+  it('verifies the recovery code as type recovery', async () => {
+    const auth = useAuthClient({
+      verifyOtp: jest.fn().mockResolvedValue({ data: { session: SESSION }, error: null }),
+    });
+    await verifyRecoveryCode({ email: 'a@b.co', code: '654321', sentAt: Date.now() });
+    expect(auth.verifyOtp).toHaveBeenCalledWith({
+      email: 'a@b.co',
+      token: '654321',
+      type: 'recovery',
+    });
+  });
+
+  it('maps a wrong recovery code to code_invalid', async () => {
+    useAuthClient({
+      verifyOtp: jest.fn().mockResolvedValue({ data: { session: null }, error: WRONG_OR_EXPIRED }),
+    });
+    await expect(
+      verifyRecoveryCode({ email: 'a@b.co', code: '111111', sentAt: Date.now() }),
+    ).rejects.toMatchObject({ code: 'code_invalid' });
+  });
+
+  it('updates the password and maps reuse / weak passwords', async () => {
+    const auth = useAuthClient({
+      updateUser: jest.fn().mockResolvedValue({ data: { user: {} }, error: null }),
+    });
+    await updatePassword('a-new-password');
+    expect(auth.updateUser).toHaveBeenCalledWith({ password: 'a-new-password' });
+
+    await expect(updatePassword('short')).rejects.toMatchObject({ code: 'weak_password' });
+
+    useAuthClient({
+      updateUser: jest
+        .fn()
+        .mockResolvedValue({ data: { user: null }, error: { code: 'same_password', status: 422 } }),
+    });
+    await expect(updatePassword('a-new-password')).rejects.toMatchObject({
+      code: 'same_password',
+    });
   });
 });
 
@@ -147,7 +250,19 @@ describe('auth request timeouts', () => {
       'signInWithPassword',
       () => signInWithPassword({ email: 'a@b.co', password: 'password123' }),
     ],
-    ['resend', 'resend', () => resendSignUpEmail('a@b.co')],
+    ['resend', 'resend', () => resendSignUpCode('a@b.co')],
+    [
+      'verify sign-up code',
+      'verifyOtp',
+      () => verifySignUpCode({ email: 'a@b.co', code: '123456', sentAt: Date.now() }),
+    ],
+    ['reset request', 'resetPasswordForEmail', () => requestPasswordReset('a@b.co')],
+    [
+      'verify recovery code',
+      'verifyOtp',
+      () => verifyRecoveryCode({ email: 'a@b.co', code: '123456', sentAt: Date.now() }),
+    ],
+    ['password update', 'updateUser', () => updatePassword('a-new-password')],
   ] as const)('%s never spins forever: it rejects with `timeout`', async (_name, method, call) => {
     useAuthClient({ [method]: jest.fn(never) });
     const pending = call();

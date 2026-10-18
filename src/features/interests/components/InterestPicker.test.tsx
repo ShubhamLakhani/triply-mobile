@@ -24,21 +24,33 @@ describe('InterestPicker', () => {
     );
     expect(screen.getByText('OUTDOORS')).toBeOnTheScreen();
     expect(screen.getByText('CULTURE')).toBeOnTheScreen();
-    expect(screen.getByTestId('picker-count')).toHaveTextContent(/^1 of 10 chosen/);
+    expect(screen.getByTestId('picker-count')).toHaveTextContent('1 of 8 chosen — pick at least 3');
     await fireEvent.press(screen.getByTestId('interest-interest-2'));
     expect(onToggle).toHaveBeenCalledWith(catalog[1]!.id);
     expect(screen.getByTestId('interest-interest-1').props.accessibilityState.checked).toBe(true);
   });
 
-  it('disables unselected chips at the 10 limit but still allows deselecting', async () => {
-    const onToggle = jest.fn();
-    const ten = catalog.slice(0, 10).map((c) => c.id);
+  it('shows a plain count once at least 3 are chosen', async () => {
     await render(
-      <InterestPicker catalog={catalog} selectedIds={ten} onToggle={onToggle} testID="picker" />,
+      <InterestPicker
+        catalog={catalog}
+        selectedIds={catalog.slice(0, 3).map((c) => c.id)}
+        onToggle={jest.fn()}
+        testID="picker"
+      />,
     );
-    expect(screen.getByTestId('picker-count')).toHaveTextContent(/10 of 10 chosen/);
-    expect(screen.getByTestId('interest-interest-11').props.accessibilityState.disabled).toBe(true);
-    await fireEvent.press(screen.getByTestId('interest-interest-11'));
+    expect(screen.getByTestId('picker-count')).toHaveTextContent('3 of 8 chosen');
+  });
+
+  it('disables unselected chips at the 8 limit but still allows deselecting', async () => {
+    const onToggle = jest.fn();
+    const eight = catalog.slice(0, 8).map((c) => c.id);
+    await render(
+      <InterestPicker catalog={catalog} selectedIds={eight} onToggle={onToggle} testID="picker" />,
+    );
+    expect(screen.getByTestId('picker-count')).toHaveTextContent(/8 of 8 chosen/);
+    expect(screen.getByTestId('interest-interest-9').props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(screen.getByTestId('interest-interest-9'));
     expect(onToggle).not.toHaveBeenCalled();
     await fireEvent.press(screen.getByTestId('interest-interest-3'));
     expect(onToggle).toHaveBeenCalledWith(catalog[2]!.id);
@@ -61,7 +73,7 @@ describe('InterestPicker', () => {
     await render(
       <InterestPicker catalog={[]} selectedIds={[]} onToggle={jest.fn()} testID="picker" />,
     );
-    expect(screen.getByTestId('picker-empty')).toHaveTextContent(/no interests to choose from/);
+    expect(screen.getByTestId('picker-empty')).toHaveTextContent(/aren’t available right now/);
     expect(screen.queryByTestId('picker-count')).toBeNull();
   });
 });

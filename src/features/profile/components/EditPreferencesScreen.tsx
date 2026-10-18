@@ -9,6 +9,7 @@ import { PreferencesFields } from '@/features/preferences/components/Preferences
 import { usePreferencesDraft } from '@/features/preferences/hooks/use-preferences-draft';
 
 import { EditScreenShell } from './EditScreenShell';
+import { preferenceErrorMessage } from './profile-messages';
 
 export function EditPreferencesScreen() {
   const { userId } = useAuthSession();
@@ -20,8 +21,8 @@ export function EditPreferencesScreen() {
     try {
       await prefs.save();
       router.back();
-    } catch {
-      setError('We couldn’t save your preferences. Please try again.');
+    } catch (cause) {
+      setError(preferenceErrorMessage(cause));
     }
   };
 
@@ -31,7 +32,8 @@ export function EditPreferencesScreen() {
       onSave={() => void save()}
       saving={prefs.isSaving}
       // Only values loaded from the server can be edited and saved (never defaults).
-      saveDisabled={prefs.status !== 'ready' || !prefs.isDirty}
+      // and never with no gender preference (the database rejects it for a completed profile).
+      saveDisabled={prefs.status !== 'ready' || !prefs.isDirty || !prefs.meetsMinimum}
       error={error}
       testID="edit-preferences"
     >

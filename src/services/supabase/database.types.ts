@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_states: {
+        Row: {
+          created_at: string
+          reason_code: string | null
+          safety_hold_at: string | null
+          status: string
+          status_changed_at: string
+          suspended_until: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          reason_code?: string | null
+          safety_hold_at?: string | null
+          status?: string
+          status_changed_at?: string
+          suspended_until?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          reason_code?: string | null
+          safety_hold_at?: string | null
+          status?: string
+          status_changed_at?: string
+          suspended_until?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       destinations: {
         Row: {
           active: boolean
@@ -290,6 +323,7 @@ export type Database = {
           bio: string | null
           created_at: string
           date_of_birth: string | null
+          discovery_paused_at: string | null
           first_name: string | null
           gender: string | null
           home_city: string | null
@@ -298,12 +332,14 @@ export type Database = {
           is_discoverable: boolean
           is_profile_complete: boolean
           occupation: string | null
+          onboarding_completed_at: string | null
           updated_at: string
         }
         Insert: {
           bio?: string | null
           created_at?: string
           date_of_birth?: string | null
+          discovery_paused_at?: string | null
           first_name?: string | null
           gender?: string | null
           home_city?: string | null
@@ -312,12 +348,14 @@ export type Database = {
           is_discoverable?: boolean
           is_profile_complete?: boolean
           occupation?: string | null
+          onboarding_completed_at?: string | null
           updated_at?: string
         }
         Update: {
           bio?: string | null
           created_at?: string
           date_of_birth?: string | null
+          discovery_paused_at?: string | null
           first_name?: string | null
           gender?: string | null
           home_city?: string | null
@@ -326,6 +364,7 @@ export type Database = {
           is_discoverable?: boolean
           is_profile_complete?: boolean
           occupation?: string | null
+          onboarding_completed_at?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -553,7 +592,39 @@ export type Database = {
           created_at: string
         }[]
       }
+      complete_onboarding: {
+        Args: never
+        Returns: {
+          bio: string | null
+          created_at: string
+          date_of_birth: string | null
+          discovery_paused_at: string | null
+          first_name: string | null
+          gender: string | null
+          home_city: string | null
+          home_country: string | null
+          id: string
+          is_discoverable: boolean
+          is_profile_complete: boolean
+          occupation: string | null
+          onboarding_completed_at: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "profiles"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       delete_profile_photo: { Args: { p_photo_id: string }; Returns: string }
+      get_my_account_state: {
+        Args: never
+        Returns: {
+          status: string
+          suspended_until: string
+        }[]
+      }
       register_profile_photo: {
         Args: {
           p_file_size_bytes: number
@@ -646,6 +717,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      set_discovery_paused: { Args: { p_paused: boolean }; Returns: string }
       set_primary_profile_photo: {
         Args: { p_photo_id: string }
         Returns: {

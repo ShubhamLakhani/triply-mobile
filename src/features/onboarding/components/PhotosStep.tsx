@@ -5,7 +5,7 @@ import { useOnboardingStep } from '../hooks/use-onboarding-step';
 
 import { OnboardingShell } from './OnboardingShell';
 
-/** Step 4: photos (optional for now; the first upload becomes the main photo). */
+/** Step 4: at least one photo (required to complete onboarding; the first becomes the main one). */
 export function PhotosStep() {
   const { userId, advance, back } = useOnboardingStep('photos');
   const photos = useOwnProfilePhotos(userId);
@@ -19,8 +19,6 @@ export function PhotosStep() {
       primaryLabel={count > 0 ? 'Continue' : 'Add a photo'}
       onPrimary={count > 0 ? () => advance() : () => undefined}
       primaryDisabled={count === 0}
-      secondaryLabel="Skip for now"
-      onSecondary={() => advance({ skipped: true })}
       onBack={back}
       testID="onboarding-photos"
     >

@@ -6,17 +6,21 @@ The source of truth for product and architecture is [`docs/`](./docs). Start wit
 `Triply_Mobile_Technical_Architecture_v2.md` and `Triply_Mobile_Implementation_Roadmap_v2.md`.
 The marketing site is a separate repository and is not a dependency.
 
-**Current milestone:** Phase 2M (onboarding + profile), in founder review. Done so far:
+**Current milestone:** Pre-3M foundation (founder review), on top of Phase 2M. Done so far:
 
 - **0M** foundation (Expo SDK 57, EAS profiles, tokens, Sentry, PostHog, query/state/forms).
 - **1M** Supabase schema, RLS and data layer (migrations 1M-A…1M-I; see `SECURITY.md`).
-- **2M** email + password auth (PKCE email confirmation, deep-link callback, protected routes),
-  resumable onboarding (profile → interests → preferences → photos → ready), Profile tab with
-  edit screens, photo upload with HEIC → JPEG normalization.
+- **2M** email + password auth with protected routes, resumable onboarding (profile → interests
+  → preferences → photos → ready), Profile tab with edit screens, photo upload with HEIC → JPEG
+  normalization.
+- **Pre-3M** 6-digit email codes for sign-up confirmation and password reset (no auth deep
+  links), migration-backed interest catalog (M-01), server-enforced account states (M-02),
+  server-validated onboarding completion with post-onboarding guards (M-03), a working
+  `npm run test:db` without Docker.
 
 Not built yet (later phases): trips UI, discovery, matching UI, chat, safety UI (block/report
-screens), account deletion, push, password reset. The Discover / Matches / Trips tabs are
-"coming soon" screens.
+screens), account deletion, push. The Discover / Matches / Trips tabs are "coming soon"
+screens.
 
 ## Stack
 
@@ -87,8 +91,10 @@ CI is **not active yet**. The reviewed workflow is parked at `Claude outputs/ci.
 only runs `.github/workflows/*`); activating it is a founder decision. It runs the checks above
 plus Postgres/pgTAP database tests, and never builds or publishes store binaries.
 
-`npm run test:db` needs PostgreSQL server binaries and pgTAP on the machine (see
-`scripts/db-test/run.sh`), with `psql` on `PATH`.
+`npm run test:db` runs every migration and pgTAP test on a throwaway local cluster (no Docker).
+It needs PostgreSQL 15+ server binaries (found automatically: Postgres.app, Homebrew, `PATH`
+or `PG_BIN`); pgTAP is used from the server if installed, otherwise built once into
+`.cache/db-test/` (see `supabase/README.md` → Testing database policies).
 
 ## Environment
 
@@ -167,9 +173,9 @@ whenever native code or config changes.
 app/                     Expo Router routes only (thin screens, no business logic)
   _layout.tsx            Root: env validation, Sentry, fonts/splash, providers, guarded root Stack
   index.tsx              Entry: redirects into the current area (auth / onboarding step / tabs)
-  (auth)/                welcome · sign-in · sign-up (signed-out only)
-  auth/callback.tsx      Email-confirmation deep link landing (PKCE code exchange in AuthProvider)
-  onboarding/            profile · interests · preferences · photos · ready (incomplete or in progress)
+  (auth)/                welcome · sign-in · sign-up · verify-email · forgot-password (signed-out only)
+  auth/callback.tsx      DEPRECATED old confirmation-link landing (kept one release)
+  onboarding/            profile · interests · preferences · photos · ready (until the server completes onboarding)
   (tabs)/                Discover · Matches · Trips · Profile (+ profile edit screens), each with its own Stack
 src/
   features/<feature>/    Feature modules (api/, components/, schemas/, hooks/), filled from Phase 1M

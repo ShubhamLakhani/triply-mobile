@@ -3,10 +3,16 @@ import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js';
 import { getSupabaseClient } from '@/services/supabase';
 import { withTimeout } from '@/utils/timeout';
 
-import { credentialsSchema, emailSchema, type CredentialsInput } from '../schemas/auth.schema';
+import {
+  credentialsSchema,
+  emailCodeInputSchema,
+  emailSchema,
+  passwordSchema,
+  type CredentialsInput,
+  type EmailCodeInput,
+} from '../schemas/auth.schema';
 
-import { AppAuthError, authError, toAuthError } from './auth-errors';
-import { getAuthRedirectUrl } from './auth-links';
+import { AppAuthError, authError, toAuthError, toCodeError } from './auth-errors';
 
 export type { AuthChangeEvent, Session, User };
 
@@ -66,10 +72,13 @@ export function subscribeToAuthChanges(
 }
 
 export interface SignUpResult {
-  /** True when Supabase requires the user to confirm the address before a session exists. */
+  /** True when Supabase requires the 6-digit email code before a session exists. */
   needsEmailConfirmation: boolean;
   session: Session | null;
 }
+
+/** A code typed by the user plus when the newest code was requested here (null if unknown). */
+export type CodeVerificationInput = EmailCodeInput & { sentAt: number | null };
 
 /** Email + password sign-in. Resolves to the new session; throws a typed AppAuthError. */
 export async function signInWithPassword(input: CredentialsInput): Promise<Session> {
@@ -83,34 +92,90 @@ export async function signInWithPassword(input: CredentialsInput): Promise<Sessi
 }
 
 /**
- * Email + password sign-up. With "confirm email" enabled in Supabase Auth there is no session
- * until the link is opened; the UI shows a check-your-email state in that case.
+ * Email + password sign-up. Supabase Auth requires email confirmation, so there is no session
+ * yet: the confirmation email carries a 6-digit code (template uses {{ .Token }}) that the user
+ * types into the app (`verifySignUpCode`). No link or redirect is involved.
  */
 export async function signUpWithPassword(input: CredentialsInput): Promise<SignUpResult> {
   const parsed = credentialsSchema.safeParse(input);
   if (!parsed.success) throw authError('invalid_input', parsed.error);
-  const { data } = await authRequest('Sign up', () =>
-    getSupabaseClient().auth.signUp({
-      ...parsed.data,
-      // Confirmation emails deep-link back into this install variant (see auth-links.ts).
-      options: { emailRedirectTo: getAuthRedirectUrl() },
-    }),
-  );
+  const { data } = await authRequest('Sign up', () => getSupabaseClient().auth.signUp(parsed.data));
   // Supabase returns a user with no identities when the email is already registered and
-  // enumeration protection is on. Treat it as "check your email" without revealing anything.
+  // enumeration protection is on. Treat it as "enter your code" without revealing anything.
   return { needsEmailConfirmation: data.session === null, session: data.session };
 }
 
-/** Re-sends the sign-up confirmation email (rate limited server-side). */
-export async function resendSignUpEmail(email: string): Promise<void> {
+/**
+ * Confirms the sign-up with the emailed code. On success Supabase returns a session and the
+ * SIGNED_IN event moves the user into onboarding.
+ */
+export async function verifySignUpCode(input: CodeVerificationInput): Promise<Session> {
+  const parsed = emailCodeInputSchema.safeParse({ email: input.email, code: input.code });
+  if (!parsed.success) throw authError('code_invalid', parsed.error);
+  try {
+    const { data } = await authRequest('Verify sign-up code', () =>
+      getSupabaseClient().auth.verifyOtp({
+        email: parsed.data.email,
+        token: parsed.data.code,
+        type: 'email',
+      }),
+    );
+    if (!data.session) throw authError('unknown');
+    return data.session;
+  } catch (cause) {
+    throw toCodeError(cause, input.sentAt);
+  }
+}
+
+/** Sends a new sign-up code (invalidates the previous one; rate limited server-side). */
+export async function resendSignUpCode(email: string): Promise<void> {
   const parsed = emailSchema.safeParse(email);
   if (!parsed.success) throw authError('invalid_input', parsed.error);
-  await authRequest('Resend confirmation', () =>
-    getSupabaseClient().auth.resend({
-      type: 'signup',
-      email: parsed.data,
-      options: { emailRedirectTo: getAuthRedirectUrl() },
-    }),
+  await authRequest('Resend sign-up code', () =>
+    getSupabaseClient().auth.resend({ type: 'signup', email: parsed.data }),
+  );
+}
+
+/**
+ * Emails a 6-digit recovery code. Supabase answers the same way whether or not the address
+ * has an account, so this never reveals which emails are registered.
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  const parsed = emailSchema.safeParse(email);
+  if (!parsed.success) throw authError('invalid_input', parsed.error);
+  await authRequest('Request password reset', () =>
+    getSupabaseClient().auth.resetPasswordForEmail(parsed.data),
+  );
+}
+
+/**
+ * Verifies the recovery code. Supabase then signs the user in and emits PASSWORD_RECOVERY;
+ * AuthProvider keeps them on the reset screen until `updatePassword` succeeds.
+ */
+export async function verifyRecoveryCode(input: CodeVerificationInput): Promise<Session> {
+  const parsed = emailCodeInputSchema.safeParse({ email: input.email, code: input.code });
+  if (!parsed.success) throw authError('code_invalid', parsed.error);
+  try {
+    const { data } = await authRequest('Verify recovery code', () =>
+      getSupabaseClient().auth.verifyOtp({
+        email: parsed.data.email,
+        token: parsed.data.code,
+        type: 'recovery',
+      }),
+    );
+    if (!data.session) throw authError('unknown');
+    return data.session;
+  } catch (cause) {
+    throw toCodeError(cause, input.sentAt);
+  }
+}
+
+/** Sets a new password for the signed-in user (after a verified recovery code). */
+export async function updatePassword(password: string): Promise<void> {
+  const parsed = passwordSchema.safeParse(password);
+  if (!parsed.success) throw authError('weak_password', parsed.error);
+  await authRequest('Update password', () =>
+    getSupabaseClient().auth.updateUser({ password: parsed.data }),
   );
 }
 

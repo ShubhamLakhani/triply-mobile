@@ -1,10 +1,12 @@
 # Creates a NEW account on the configured (development) Supabase project and stops at the
-# check-your-email state. Run explicitly, with a fresh address you control:
+# 6-digit code screen (file name kept from Phase 2M). Run explicitly, with a fresh address
+# you control:
 #   maestro test -e TRIPLY_E2E_NEW_EMAIL=you+e2e1@example.com -e TRIPLY_E2E_PASSWORD=... \
 #     tests/e2e/maestro/flows/backend/sign-up-check-email.yaml
-# Then open the confirmation link ON THE SAME DEVICE (PKCE: only this install can finish it).
+# Then read the code from the email (any device: no link is involved) and, WITHOUT relaunching
+# the app (the pending email is kept in memory only), run sign-up-verify-code.yaml.
 appId: cc.toolmint.triply.dev
-name: Backend - sign up reaches check-your-email
+name: Backend - sign up reaches the email code screen
 tags:
   - backend
   - creates-account
@@ -26,8 +28,13 @@ tags:
 - inputText: ${TRIPLY_E2E_PASSWORD}
 - tapOn:
     id: auth-submit
-# Must settle within the 20 s auth budget: check-email on success, an inline error otherwise.
+# Must settle within the 20 s auth budget: the code screen on success, an inline error otherwise.
 - extendedWaitUntil:
     visible:
-      id: check-email-screen
+      id: verify-email-screen
     timeout: 25000
+- assertVisible:
+    id: verify-email-code
+# Resend starts on a 60 s cooldown after the first email.
+- assertVisible:
+    id: verify-email-resend

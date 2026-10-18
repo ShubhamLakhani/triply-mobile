@@ -1,12 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import {
-  addInterest,
-  fetchActiveInterests,
-  fetchOwnInterests,
-  removeInterest,
-  replaceOwnInterests,
-} from '../api/interest-api';
+import { fetchActiveInterests, fetchOwnInterests, replaceOwnInterests } from '../api/interest-api';
 import { InterestError } from '../api/interest-errors';
 import { interestKeys } from '../api/interest-keys';
 
@@ -39,22 +33,6 @@ export function useOwnInterests(userId: string | null) {
 function useInvalidateOwnInterests(userId: string | null) {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: interestKeys.own(requireUser(userId)) });
-}
-
-export function useAddInterest(userId: string | null) {
-  const invalidate = useInvalidateOwnInterests(userId);
-  return useMutation<void, InterestError | Error, string>({
-    mutationFn: (interestId) => addInterest(requireUser(userId), interestId),
-    onSuccess: invalidate,
-  });
-}
-
-export function useRemoveInterest(userId: string | null) {
-  const invalidate = useInvalidateOwnInterests(userId);
-  return useMutation<void, InterestError | Error, string>({
-    mutationFn: (interestId) => removeInterest(requireUser(userId), interestId),
-    onSuccess: invalidate,
-  });
 }
 
 /** Saves a multi-select in one atomic call. */

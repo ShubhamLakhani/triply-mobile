@@ -23,6 +23,7 @@ function mockSession(signOut: jest.Mock) {
     isInitializing: false,
     restoreError: null,
     retryRestore: jest.fn(),
+    passwordRecovery: false,
     signOut,
   });
 }

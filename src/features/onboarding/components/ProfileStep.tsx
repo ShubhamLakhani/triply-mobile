@@ -9,7 +9,6 @@ import { useUpdateProfile } from '@/features/profile/hooks/use-own-profile';
 import { toProfileUpdate } from '@/features/profile/schemas/profile-form.schema';
 
 import { useOnboardingStep } from '../hooks/use-onboarding-step';
-import { markOnboardingStarted } from '../progress';
 
 import { OnboardingShell } from './OnboardingShell';
 
@@ -22,12 +21,8 @@ export function ProfileStep() {
 
   const submit = form.handleSubmit(async (values) => {
     setError(null);
-    // Mark onboarding as in progress BEFORE the save: the saved row (cached as soon as the
-    // mutation succeeds) can make the account look complete, and without the marker the root
-    // guard would briefly route to the tabs. If the save fails the marker is harmless: an
-    // incomplete profile always resumes at this step, and if the write did land the user
-    // correctly continues with the optional steps.
-    if (userId) markOnboardingStarted(userId);
+    // A complete core profile does not finish onboarding: only complete_onboarding() on the
+    // Ready step does (server timestamp), so saving here never routes to the tabs.
     try {
       const saved = await update.mutateAsync(toProfileUpdate(values));
       if (!saved.is_profile_complete) {

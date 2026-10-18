@@ -11,7 +11,7 @@ import type { DiscoveryPreferences, GenderPreference } from '../types';
 import { PreferenceError, toPreferenceError } from './preference-errors';
 
 export const DISCOVERY_PREFERENCE_COLUMNS =
-  'user_id, min_age, max_age, minimum_overlap_days, max_distance_km, created_at, updated_at' as const;
+  'user_id, min_age, max_age, minimum_overlap_days, created_at, updated_at' as const;
 
 /** The caller's preferences row (created automatically with the profile). */
 export async function fetchOwnDiscoveryPreferences(userId: string): Promise<DiscoveryPreferences> {
@@ -47,7 +47,7 @@ export async function updateDiscoveryPreferences(
   return data;
 }
 
-/** Genders the caller wants to meet (empty = not configured yet). */
+/** Genders the caller wants to meet (empty = not configured yet; "Everyone" = all values). */
 export async function fetchOwnGenderPreferences(userId: string): Promise<GenderPreference[]> {
   const { data, error } = await getSupabaseClient()
     .from('discovery_gender_preferences')
@@ -64,7 +64,11 @@ export async function fetchOwnGenderPreferences(userId: string): Promise<GenderP
   return parsed.data;
 }
 
-/** Atomically replaces gender preferences via the set_discovery_gender_preferences RPC. */
+/**
+ * Atomically replaces gender preferences via the set_discovery_gender_preferences RPC (the only
+ * write path). Empty is accepted while onboarding is in progress; once onboarding is complete
+ * the database rejects it (`gender_required`).
+ */
 export async function setGenderPreferences(
   values: GenderPreferencesInput,
 ): Promise<GenderPreference[]> {

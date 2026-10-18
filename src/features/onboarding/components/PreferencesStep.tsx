@@ -5,14 +5,16 @@ import { RetryNotice } from '@/components/feedback/RetryNotice';
 import { InlineMessage } from '@/components/ui/InlineMessage';
 import { PreferencesFields } from '@/features/preferences/components/PreferencesFields';
 import { usePreferencesDraft } from '@/features/preferences/hooks/use-preferences-draft';
+import { preferenceErrorMessage } from '@/features/profile/components/profile-messages';
 
 import { useOnboardingStep } from '../hooks/use-onboarding-step';
 
 import { OnboardingShell } from './OnboardingShell';
 
 /**
- * Step 3: who to meet, age range, minimum overlap. Defaults already exist server-side, so if
- * they cannot be loaded the user can retry or skip, but never save values they were not shown.
+ * Step 3: who to meet (at least one, or Everyone), age range, minimum overlap. Required to
+ * complete onboarding. If the saved values cannot be loaded the user can only retry: nothing
+ * they were not shown is ever saved.
  */
 export function PreferencesStep() {
   const { userId, advance, back } = useOnboardingStep('preferences');
@@ -24,8 +26,8 @@ export function PreferencesStep() {
     try {
       await prefs.save();
       advance();
-    } catch {
-      setError('We couldn’t save your preferences. Please try again.');
+    } catch (cause) {
+      setError(preferenceErrorMessage(cause));
     }
   };
 
@@ -37,9 +39,7 @@ export function PreferencesStep() {
       primaryLabel="Continue"
       onPrimary={() => void save()}
       primaryLoading={prefs.isSaving}
-      primaryDisabled={prefs.status !== 'ready'}
-      secondaryLabel={prefs.isError ? 'Skip for now' : undefined}
-      onSecondary={prefs.isError ? () => advance({ skipped: true }) : undefined}
+      primaryDisabled={prefs.status !== 'ready' || !prefs.meetsMinimum}
       onBack={back}
       error={error}
       testID="onboarding-preferences"
@@ -56,7 +56,7 @@ export function PreferencesStep() {
         </>
       ) : prefs.isError ? (
         <RetryNotice
-          message="We couldn’t load your preferences. Try again, or skip and set them later from your profile."
+          message="We couldn’t load your preferences. Check your connection and try again."
           onRetry={prefs.retry}
           retrying={prefs.isRetrying}
           testID="preferences-load-error"

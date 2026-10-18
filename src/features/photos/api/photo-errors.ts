@@ -1,5 +1,10 @@
+import { TRIPLY_SQLSTATE } from '@/services/supabase/sqlstate';
+
 export type PhotoErrorCode =
   | 'not_authenticated'
+  | 'last_photo'
+  | 'replace_incomplete'
+  | 'account_inactive'
   | 'invalid_input'
   | 'not_found'
   | 'limit_reached'
@@ -27,6 +32,12 @@ export function toPhotoError(error: { code?: string }): PhotoError {
       return new PhotoError('not_found', 'Photo not found.', { cause: error });
     case '54000':
       return new PhotoError('limit_reached', 'You can add up to 6 photos.', { cause: error });
+    case TRIPLY_SQLSTATE.blockedAfterOnboarding:
+      return new PhotoError('last_photo', 'A completed profile keeps at least one photo.', {
+        cause: error,
+      });
+    case TRIPLY_SQLSTATE.accountInactive:
+      return new PhotoError('account_inactive', 'Account is not active.', { cause: error });
     case '42501':
       return new PhotoError('not_allowed', 'Not allowed.', { cause: error });
     default:

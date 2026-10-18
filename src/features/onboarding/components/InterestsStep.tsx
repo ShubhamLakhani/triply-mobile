@@ -3,12 +3,14 @@ import { useState } from 'react';
 import { RetryNotice } from '@/components/feedback/RetryNotice';
 import { InterestPicker } from '@/features/interests/components/InterestPicker';
 import { useInterestSelection } from '@/features/interests/hooks/use-interest-selection';
+import { MAX_INTERESTS, MIN_INTERESTS } from '@/features/interests/types';
+import { interestErrorMessage } from '@/features/profile/components/profile-messages';
 
 import { useOnboardingStep } from '../hooks/use-onboarding-step';
 
 import { OnboardingShell } from './OnboardingShell';
 
-/** Step 2: up to 10 interests (optional, atomic save). */
+/** Step 2: 3–8 interests (required to complete onboarding; atomic save). */
 export function InterestsStep() {
   const { userId, advance, back } = useOnboardingStep('interests');
   const selection = useInterestSelection(userId);
@@ -19,34 +21,31 @@ export function InterestsStep() {
     try {
       if (selection.isDirty) await selection.save();
       advance();
-    } catch {
-      setError('We couldn’t save your interests. Please try again.');
+    } catch (cause) {
+      setError(interestErrorMessage(cause));
     }
   };
+  const count = selection.selectedIds.length;
 
   return (
     <OnboardingShell
       step="interests"
       title="What are you into?"
-      subtitle="Pick up to 10. They help you find people you’ll actually enjoy a day with."
+      subtitle={`Pick ${MIN_INTERESTS} to ${MAX_INTERESTS}. They help you find people you’ll actually enjoy a day with.`}
       primaryLabel={
-        selection.selectedIds.length === 0
-          ? 'Continue'
-          : `Continue with ${selection.selectedIds.length}`
+        count < MIN_INTERESTS ? `Pick ${MIN_INTERESTS - count} more` : `Continue with ${count}`
       }
       onPrimary={() => void save()}
       primaryLoading={selection.isSaving}
       // Saving replaces the whole selection, so it needs the saved selection loaded first.
-      primaryDisabled={selection.status !== 'ready'}
-      secondaryLabel="Skip for now"
-      onSecondary={() => advance({ skipped: true })}
+      primaryDisabled={selection.status !== 'ready' || !selection.meetsMinimum}
       onBack={back}
       error={error}
       testID="onboarding-interests"
     >
       {selection.isError ? (
         <RetryNotice
-          message="We couldn’t load interests. Try again, or skip and add them later from your profile."
+          message="We couldn’t load interests. Check your connection and try again."
           onRetry={selection.retry}
           retrying={selection.isRetrying}
           testID="interests-load-error"

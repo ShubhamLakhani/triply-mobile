@@ -1,4 +1,10 @@
-import { createQueryClient, QUERY_MAX_RETRIES, shouldRetryQuery } from './query-client';
+import {
+  ACCOUNT_STATE_QUERY_PREFIX,
+  createQueryClient,
+  isAccountInactiveFailure,
+  QUERY_MAX_RETRIES,
+  shouldRetryQuery,
+} from './query-client';
 import { isOnline } from './react-native-managers';
 
 describe('query client defaults', () => {
@@ -58,5 +64,39 @@ describe('query client defaults', () => {
     expect(isOnline({ isConnected: true })).toBe(true);
     expect(isOnline({ isConnected: false, isInternetReachable: false })).toBe(false);
     expect(isOnline({ isConnected: true, isInternetReachable: false })).toBe(false);
+  });
+});
+
+describe('account_inactive handling', () => {
+  it('recognises typed and raw account-inactive failures only', () => {
+    expect(isAccountInactiveFailure({ code: 'account_inactive' })).toBe(true);
+    expect(isAccountInactiveFailure({ code: 'TR001' })).toBe(true);
+    expect(isAccountInactiveFailure({ code: 'TR002' })).toBe(false);
+    expect(isAccountInactiveFailure(new Error('x'))).toBe(false);
+  });
+
+  it('a mutation failing with account_inactive re-fetches the account state', async () => {
+    const client = createQueryClient();
+    const invalidate = jest.spyOn(client, 'invalidateQueries');
+    await expect(
+      client
+        .getMutationCache()
+        .build(client, {
+          mutationFn: () =>
+            Promise.reject(Object.assign(new Error('x'), { code: 'account_inactive' })),
+        })
+        .execute(undefined),
+    ).rejects.toThrow('x');
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ACCOUNT_STATE_QUERY_PREFIX });
+
+    invalidate.mockClear();
+    await expect(
+      client
+        .getMutationCache()
+        .build(client, { mutationFn: () => Promise.reject(new Error('network')) })
+        .execute(undefined),
+    ).rejects.toThrow('network');
+    expect(invalidate).not.toHaveBeenCalled();
+    client.clear();
   });
 });
