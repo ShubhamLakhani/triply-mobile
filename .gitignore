@@ -34,6 +34,7 @@ sentry.properties
 
 # Tooling
 coverage/
+.jest-cache/
 npm-debug.*
 yarn-debug.*
 yarn-error.*

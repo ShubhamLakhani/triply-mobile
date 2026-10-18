@@ -4,7 +4,7 @@ import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium';
 import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
 import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
 import { useFonts } from 'expo-font';
-import { type ErrorBoundaryProps, Stack } from 'expo-router';
+import { type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -14,6 +14,7 @@ import { StyleSheet } from 'react-native';
 import { ConfigErrorScreen } from '@/components/feedback/ConfigErrorScreen';
 import { ErrorFallback } from '@/components/feedback/ErrorFallback';
 import { loadEnv } from '@/config/env';
+import { RootNavigator } from '@/features/auth/components/RootNavigator';
 import { AppProviders } from '@/providers/AppProviders';
 import { captureError, initObservability, wrapRootComponent } from '@/services/observability';
 import { colors } from '@/theme';
@@ -73,18 +74,7 @@ function RootLayout() {
   return (
     <AppProviders env={envResult.env}>
       <StatusBar style="dark" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.background },
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(onboarding)" />
-        <Stack.Screen name="+not-found" />
-      </Stack>
+      <RootNavigator />
     </AppProviders>
   );
 }

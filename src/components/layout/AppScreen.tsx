@@ -69,8 +69,23 @@ export function AppScreen({
   );
 }
 
+/** Inner scrolling region for screens that pin a footer (header + footer stay fixed). */
+AppScreen.Scroll = function AppScreenScroll({ children }: { children: ReactNode }) {
+  return (
+    <ScrollView
+      style={styles.fill}
+      contentContainerStyle={styles.innerScroll}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
+      {children}
+    </ScrollView>
+  );
+};
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   fill: { flex: 1 },
   content: { paddingHorizontal: spacing.md, paddingVertical: spacing.lg, gap: spacing.md },
+  innerScroll: { gap: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.lg },
 });

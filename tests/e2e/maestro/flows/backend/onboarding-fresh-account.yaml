@@ -1,0 +1,93 @@
+# Full Phase 2M onboarding for a CONFIRMED account that has never completed onboarding:
+#   maestro test -e TRIPLY_E2E_EMAIL=... -e TRIPLY_E2E_PASSWORD=... \
+#     tests/e2e/maestro/flows/backend/onboarding-fresh-account.yaml
+# Writes profile, preferences and (optionally skipped) interests/photos to the backend.
+appId: cc.toolmint.triply.dev
+name: Backend - onboarding to the tabs, then sign out
+tags:
+  - backend
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+- extendedWaitUntil:
+    visible:
+      id: welcome-screen
+    timeout: 30000
+- tapOn:
+    id: welcome-sign-in
+- tapOn:
+    id: auth-email
+- inputText: ${TRIPLY_E2E_EMAIL}
+- tapOn:
+    id: auth-password
+- inputText: ${TRIPLY_E2E_PASSWORD}
+- tapOn:
+    id: auth-submit
+- extendedWaitUntil:
+    visible:
+      id: onboarding-profile
+    timeout: 25000
+# Step 1: the only step the database requires (name, 18+ date of birth, gender).
+- tapOn:
+    id: field-first-name
+- eraseText
+- inputText: Maya
+- tapOn:
+    id: field-dob-day
+- inputText: '07'
+- tapOn:
+    id: field-dob-month
+- inputText: '03'
+- tapOn:
+    id: field-dob-year
+- inputText: '1994'
+- hideKeyboard
+- tapOn:
+    id: field-gender-woman
+- tapOn:
+    id: onboarding-profile-primary
+# Never a detour through the tabs after the profile save.
+- extendedWaitUntil:
+    visible:
+      id: onboarding-interests
+    timeout: 20000
+- assertNotVisible:
+    id: discover-screen
+- tapOn:
+    id: onboarding-interests-secondary
+- extendedWaitUntil:
+    visible:
+      id: onboarding-preferences
+    timeout: 20000
+- tapOn:
+    id: onboarding-preferences-primary
+- extendedWaitUntil:
+    visible:
+      id: onboarding-photos
+    timeout: 20000
+- tapOn:
+    id: onboarding-photos-secondary
+- extendedWaitUntil:
+    visible:
+      id: onboarding-ready
+    timeout: 20000
+- tapOn:
+    id: onboarding-ready-primary
+- extendedWaitUntil:
+    visible:
+      id: discover-screen
+    timeout: 20000
+- tapOn:
+    id: tab-profile
+- assertVisible:
+    id: profile-screen
+- scrollUntilVisible:
+    element:
+      id: profile-sign-out
+- tapOn:
+    id: profile-sign-out
+- extendedWaitUntil:
+    visible:
+      id: welcome-screen
+    timeout: 15000

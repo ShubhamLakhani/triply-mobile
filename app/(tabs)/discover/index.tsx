@@ -1,12 +1,13 @@
-import { PlaceholderScreen } from '@/components/layout/PlaceholderScreen';
+import { ComingSoonScreen } from '@/components/layout/ComingSoonScreen';
 
 export default function DiscoverScreen() {
   return (
-    <PlaceholderScreen
+    <ComingSoonScreen
       testID="discover-screen"
       title="Discover"
-      description="Travelers heading to the same place at the same time, ranked by date overlap."
-      plannedPhase="Phase 4M"
+      icon="compass"
+      headline="People heading your way"
+      description="We’ll show travellers going to the same destination on overlapping dates, ranked by how much time you’d share."
     />
   );
 }

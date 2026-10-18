@@ -14,7 +14,11 @@ screens (app/) ──► feature hooks (hooks/) ──► feature API (api/) ─
 ```
 
 - **Screens never import the Supabase client.** Only `src/services/supabase` and the feature
-  `api/` modules call it (audited in 1M-I: no exceptions).
+  `api/` modules call it (audited in 1M-I: no exceptions). Route files under `app/` are thin:
+  they export a feature component.
+- **One auth subscription.** `AuthProvider` (inside `AppProviders`) owns session state, cache
+  reset and analytics identity; `useAuthSession` reads it. `RootNavigator` guards the route
+  groups with `Stack.Protected` from `resolveAppArea`.
 - **Server state lives only in TanStack Query.** Zustand (`src/stores`) holds transient UI
   state only.
 - **Columns are always listed explicitly.** There is no `select('*')` anywhere.
@@ -119,8 +123,6 @@ committed (`c76b7bc`). Confirm with `npx supabase migration list` that the remot
 
 ## Known deferred work (not blocking Phase 1M)
 
-- **`useAuthSession`** subscribes once per caller. Add a single session provider together
-  with the routing/auth guard in the UI phase.
 - **Catalog hooks** (`useDestinations`, `useInterests`) run whenever they are enabled. Screens
   shown while signed out must pass `enabled: false`.
 - **Error codes** use a few legacy synonyms (`forbidden` vs `not_allowed`,

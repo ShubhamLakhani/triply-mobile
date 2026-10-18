@@ -1,18 +1,19 @@
 import type { QueryClient } from '@tanstack/react-query';
 
-import { subscribeToAuthChanges } from './auth-api';
+import { subscribeToAuthChanges, type AuthChangeEvent, type Session } from './auth-api';
+
+export type AuthChangeHandler = (event: AuthChangeEvent, session: Session | null) => void;
 
 /**
- * Clears all cached server state when the signed-in account goes away or changes, so no data
- * from a previous account survives in memory:
+ * Builds the handler that clears all cached server state when the signed-in account goes
+ * away or changes, so no data from a previous account survives in memory:
  * - on SIGNED_OUT;
- * - when a session for a DIFFERENT user appears (e.g. signing in as B while A's session was
- *   still active, which Supabase reports as SIGNED_IN without a SIGNED_OUT).
- * Query keys are user-scoped as well; this is defence in depth. Returns an unsubscribe function.
+ * - when a session for a DIFFERENT user appears (account switch reported as SIGNED_IN).
+ * Query keys are user-scoped as well; this is defence in depth.
  */
-export function registerAuthCacheReset(queryClient: QueryClient): () => void {
+export function createAuthCacheReset(queryClient: QueryClient): AuthChangeHandler {
   let lastUserId: string | null = null;
-  return subscribeToAuthChanges((event, session) => {
+  return (event, session) => {
     if (event === 'SIGNED_OUT') {
       queryClient.clear();
       lastUserId = null;
@@ -24,5 +25,13 @@ export function registerAuthCacheReset(queryClient: QueryClient): () => void {
       queryClient.clear();
     }
     lastUserId = userId;
-  });
+  };
+}
+
+/**
+ * Standalone subscription variant (used by tests and non-provider contexts). The app itself
+ * feeds the handler from the single AuthProvider subscription instead.
+ */
+export function registerAuthCacheReset(queryClient: QueryClient): () => void {
+  return subscribeToAuthChanges(createAuthCacheReset(queryClient));
 }

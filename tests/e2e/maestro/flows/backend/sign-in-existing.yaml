@@ -1,0 +1,65 @@
+# Sign in with a CONFIRMED account that has finished onboarding, walk the tabs, sign out:
+#   maestro test -e TRIPLY_E2E_EMAIL=... -e TRIPLY_E2E_PASSWORD=... \
+#     tests/e2e/maestro/flows/backend/sign-in-existing.yaml
+appId: cc.toolmint.triply.dev
+name: Backend - sign in, tabs, sign out
+tags:
+  - backend
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+- extendedWaitUntil:
+    visible:
+      id: welcome-screen
+    timeout: 30000
+- tapOn:
+    id: welcome-sign-in
+- tapOn:
+    id: auth-email
+- inputText: ${TRIPLY_E2E_EMAIL}
+- tapOn:
+    id: auth-password
+- inputText: ${TRIPLY_E2E_PASSWORD}
+- tapOn:
+    id: auth-submit
+- extendedWaitUntil:
+    visible:
+      id: discover-screen
+    timeout: 25000
+- tapOn:
+    id: tab-matches
+- assertVisible:
+    id: matches-screen
+- tapOn:
+    id: tab-trips
+- assertVisible:
+    id: trips-screen
+- tapOn:
+    id: tab-profile
+- assertVisible:
+    id: profile-screen
+- tapOn:
+    id: profile-edit
+- assertVisible:
+    id: edit-profile
+- tapOn:
+    id: header-back
+- assertVisible:
+    id: profile-screen
+- scrollUntilVisible:
+    element:
+      id: profile-sign-out
+- tapOn:
+    id: profile-sign-out
+- extendedWaitUntil:
+    visible:
+      id: welcome-screen
+    timeout: 15000
+# Relaunch: signed out stays signed out.
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible:
+      id: welcome-screen
+    timeout: 30000

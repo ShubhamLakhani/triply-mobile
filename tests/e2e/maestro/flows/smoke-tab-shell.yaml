@@ -1,37 +1,48 @@
-# Phase 0M smoke: app launches, tab shell works, cross-group navigation + back.
+# Phase 2M smoke (no backend writes): a fresh install lands on Welcome behind the auth gate,
+# reaches Sign up / Sign in, and on-device validation runs before any request is sent.
+# (File name kept from Phase 0M; the tab shell is now behind sign-in, see flows/backend/.)
 # Targets the development build (cc.toolmint.triply.dev) with Metro running.
 appId: cc.toolmint.triply.dev
-name: Smoke — tab shell and navigation
+name: Smoke - signed-out entry and auth screens
+tags:
+  - smoke
 ---
 - launchApp:
     clearState: true
+    clearKeychain: true
 - extendedWaitUntil:
     visible:
-      id: discover-screen
+      id: welcome-screen
     timeout: 30000
+# The tabs are guarded: nothing of the signed-in app is reachable.
+- assertNotVisible:
+    id: discover-screen
 - tapOn:
-    id: tab-matches
+    id: welcome-sign-up
 - assertVisible:
-    id: matches-screen
+    id: sign-up-screen
+# On-device validation: an invalid email and a short password never reach Supabase.
 - tapOn:
-    id: tab-trips
-- assertVisible:
-    id: trips-screen
+    id: auth-email
+- inputText: not-an-email
 - tapOn:
-    id: tab-profile
-- assertVisible:
-    id: profile-screen
+    id: auth-password
+- inputText: short
 - tapOn:
-    id: open-sign-in
-- assertVisible:
-    id: sign-in-placeholder
-- back
-- assertVisible:
-    id: profile-screen
+    id: auth-submit
+- assertVisible: Enter a valid email address.
+- assertVisible: Use at least 8 characters.
+- assertNotVisible:
+    id: check-email-screen
 - tapOn:
-    id: open-onboarding
+    id: link-sign-in
 - assertVisible:
-    id: onboarding-placeholder
-- tapOn: Back
+    id: sign-in-screen
+- tapOn:
+    id: link-sign-up
 - assertVisible:
-    id: profile-screen
+    id: sign-up-screen
+- tapOn:
+    id: header-back
+- assertVisible:
+    id: welcome-screen

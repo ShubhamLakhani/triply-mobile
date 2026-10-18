@@ -6,13 +6,24 @@ The source of truth for product and architecture is [`docs/`](./docs). Start wit
 `Triply_Mobile_Technical_Architecture_v2.md` and `Triply_Mobile_Implementation_Roadmap_v2.md`.
 The marketing site is a separate repository and is not a dependency.
 
-**Current milestone:** Phase 0M, the mobile foundation. No product features exist yet.
+**Current milestone:** Phase 2M (onboarding + profile), in founder review. Done so far:
+
+- **0M** foundation (Expo SDK 57, EAS profiles, tokens, Sentry, PostHog, query/state/forms).
+- **1M** Supabase schema, RLS and data layer (migrations 1M-A…1M-I; see `SECURITY.md`).
+- **2M** email + password auth (PKCE email confirmation, deep-link callback, protected routes),
+  resumable onboarding (profile → interests → preferences → photos → ready), Profile tab with
+  edit screens, photo upload with HEIC → JPEG normalization.
+
+Not built yet (later phases): trips UI, discovery, matching UI, chat, safety UI (block/report
+screens), account deletion, push, password reset. The Discover / Matches / Trips tabs are
+"coming soon" screens.
 
 ## Stack
 
 Expo SDK 57 · React Native 0.86 (New Architecture, Hermes) · React 19.2 · TypeScript (strict) ·
 Expo Router · TanStack Query · Zustand · React Hook Form + Zod · Reanimated 4 + Gesture Handler ·
-Supabase JS · Sentry · PostHog · Expo Notifications · expo-image / expo-image-picker · Jest
+Supabase JS · Sentry · PostHog · Expo Notifications · expo-image / expo-image-picker /
+expo-image-manipulator · Jest
 (jest-expo) + React Native Testing Library · Maestro · EAS Build / Submit / Update.
 
 ## Prerequisites
@@ -72,8 +83,12 @@ npm run verify         # everything above except doctor
 npm run export:ios && npm run export:android   # Metro → Hermes bundle for both platforms
 ```
 
-CI (`.github/workflows/ci.yml`) runs the same checks on every pull request. It never builds or
-publishes store binaries.
+CI is **not active yet**. The reviewed workflow is parked at `Claude outputs/ci.yml` (GitHub
+only runs `.github/workflows/*`); activating it is a founder decision. It runs the checks above
+plus Postgres/pgTAP database tests, and never builds or publishes store binaries.
+
+`npm run test:db` needs PostgreSQL server binaries and pgTAP on the machine (see
+`scripts/db-test/run.sh`), with `psql` on `PATH`.
 
 ## Environment
 
@@ -150,11 +165,12 @@ whenever native code or config changes.
 
 ```
 app/                     Expo Router routes only (thin screens, no business logic)
-  _layout.tsx            Root: env validation, Sentry, fonts/splash, providers, root Stack
-  index.tsx              Entry redirect (becomes the auth gate in Phase 1M)
-  (auth)/sign-in.tsx     Placeholder (Phase 1M)
-  (onboarding)/start.tsx Placeholder (Phase 2M)
-  (tabs)/                Discover · Matches · Trips · Profile, each with its own Stack
+  _layout.tsx            Root: env validation, Sentry, fonts/splash, providers, guarded root Stack
+  index.tsx              Entry: redirects into the current area (auth / onboarding step / tabs)
+  (auth)/                welcome · sign-in · sign-up (signed-out only)
+  auth/callback.tsx      Email-confirmation deep link landing (PKCE code exchange in AuthProvider)
+  onboarding/            profile · interests · preferences · photos · ready (incomplete or in progress)
+  (tabs)/                Discover · Matches · Trips · Profile (+ profile edit screens), each with its own Stack
 src/
   features/<feature>/    Feature modules (api/, components/, schemas/, hooks/), filled from Phase 1M
   components/ui|feedback|layout   Small internal primitives (AppText, AppButton, AppScreen, LoadingState…)
@@ -172,7 +188,7 @@ src/
 assets/                  Placeholder brand assets (replace before distribution)
 supabase/                Supabase CLI config, migrations, local seed (see supabase/README.md)
 scripts/                 security + config check scripts
-tests/                   Jest setup, shared test utils, navigation tests, Maestro E2E
+tests/                   Jest setup, shared test utils, navigation tests, Maestro E2E (tests/e2e/maestro)
 ```
 
 Rules enforced by lint:

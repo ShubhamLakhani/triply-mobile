@@ -1,10 +1,14 @@
 import { Redirect } from 'expo-router';
 
+import { useAppArea } from '@/features/auth/routing/use-app-area';
+import { BootstrapScreen } from '@/features/auth/components/BootstrapScreen';
+
 /**
- * Entry route.
- * Phase 0M: no auth yet, go straight to the tab shell.
- * Phase 1M: replace with session-aware routing (Stack.Protected guards for auth/onboarding/tabs).
+ * Entry + anchor route. The root layout's guards decide which group is mounted; this screen
+ * sends the user to the right place inside it (and to the onboarding step they should resume).
  */
 export default function Index() {
-  return <Redirect href="/discover" />;
+  const { area, home } = useAppArea();
+  if (area === 'bootstrap' || area === 'error' || !home) return <BootstrapScreen />;
+  return <Redirect href={home as never} />;
 }

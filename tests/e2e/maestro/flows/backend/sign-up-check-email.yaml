@@ -1,0 +1,33 @@
+# Creates a NEW account on the configured (development) Supabase project and stops at the
+# check-your-email state. Run explicitly, with a fresh address you control:
+#   maestro test -e TRIPLY_E2E_NEW_EMAIL=you+e2e1@example.com -e TRIPLY_E2E_PASSWORD=... \
+#     tests/e2e/maestro/flows/backend/sign-up-check-email.yaml
+# Then open the confirmation link ON THE SAME DEVICE (PKCE: only this install can finish it).
+appId: cc.toolmint.triply.dev
+name: Backend - sign up reaches check-your-email
+tags:
+  - backend
+  - creates-account
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+- extendedWaitUntil:
+    visible:
+      id: welcome-screen
+    timeout: 30000
+- tapOn:
+    id: welcome-sign-up
+- tapOn:
+    id: auth-email
+- inputText: ${TRIPLY_E2E_NEW_EMAIL}
+- tapOn:
+    id: auth-password
+- inputText: ${TRIPLY_E2E_PASSWORD}
+- tapOn:
+    id: auth-submit
+# Must settle within the 20 s auth budget: check-email on success, an inline error otherwise.
+- extendedWaitUntil:
+    visible:
+      id: check-email-screen
+    timeout: 25000

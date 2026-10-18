@@ -1,46 +1,30 @@
-import { useEffect, useState } from 'react';
-
-import { captureError } from '@/services/observability';
-
-import { getCurrentSession, subscribeToAuthChanges, type Session } from '../api/auth-api';
+import { useAuth, type AuthState } from '../providers/AuthProvider';
 
 export interface AuthSessionState {
-  session: Session | null;
+  session: AuthState['session'];
   userId: string | null;
+  isAuthenticated: boolean;
+  /** Alias of `isInitializing`, kept for Phase 1M callers. */
   isLoading: boolean;
+  isInitializing: boolean;
+  /** A stored session could not be restored (offline / timeout); see AuthState. */
+  restoreError: AuthState['restoreError'];
+  retryRestore: () => void;
+  signOut: () => Promise<void>;
 }
 
-/**
- * Current Supabase session, kept in sync with auth state changes. Session data stays in
- * Supabase's own persisted store; it is not copied into Zustand.
- */
+/** Current session from the single app-level AuthProvider (no per-screen subscriptions). */
 export function useAuthSession(): AuthSessionState {
-  const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-
-    getCurrentSession()
-      .then((current) => {
-        if (active) setSession(current);
-      })
-      .catch((error: unknown) => captureError(error, { source: 'auth-session' }))
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
-
-    const unsubscribe = subscribeToAuthChanges((_event, next) => {
-      if (!active) return;
-      setSession(next);
-      setIsLoading(false);
-    });
-
-    return () => {
-      active = false;
-      unsubscribe();
-    };
-  }, []);
-
-  return { session, userId: session?.user.id ?? null, isLoading };
+  const { session, userId, isAuthenticated, isInitializing, restoreError, retryRestore, signOut } =
+    useAuth();
+  return {
+    session,
+    userId,
+    isAuthenticated,
+    isLoading: isInitializing,
+    isInitializing,
+    restoreError,
+    retryRestore,
+    signOut,
+  };
 }

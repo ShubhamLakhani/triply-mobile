@@ -81,6 +81,33 @@ open to every signed-in user.
 - **Session.** Supabase JS with `expo-sqlite` `localStorage` persistence, as Supabase
   recommends for Expo. It is not hardware-encrypted, so it relies on device encryption.
   Auto-refresh runs only while the app is in the foreground. The app never logs tokens.
+- **Auth links (Phase 2M hardening).** The client uses the PKCE flow. Only
+  `<this install's scheme>://auth/callback?code=…` is acted on; the code is exchanged with the
+  verifier stored on the device, so a link crafted or intercepted elsewhere cannot sign anyone
+  in. Raw `access_token` / `refresh_token` links are rejected (never passed to `setSession`),
+  links are ignored while a session exists (no silent account switch), codes are exchanged at
+  most once, and failures show fixed copy (`link_expired` / `link_invalid`), never provider
+  text.
+  - Hermes has no WebCrypto, so auth-js runs PKCE in `plain` mode (verified on the iOS
+    simulator: "WebCrypto API is not supported"). The verifier is generated on the device and
+    only ever sent over TLS to Supabase; a link alone still cannot be exchanged elsewhere.
+    Moving to `S256` needs a `crypto.subtle.digest` polyfill (e.g. `expo-crypto`); deferred.
+  - auth-js discards the verifier on any failed exchange, so a link is single-shot. Supabase
+    has already confirmed the email by then; the copy tells the user to sign in.
+- **Timeouts.** Every Supabase HTTP request has a time budget enforced by an aborting fetch
+  wrapper (30 s; storage 180 s; logout 10 s), because React Native's Android HTTP client has no
+  default timeouts. Auth calls also settle after 20 s with a stable `timeout` error. Sign-out
+  clears the device even when the revoke request fails (the refresh token then expires
+  server-side).
+- **Stale connections (found in simulator E2E).** An idle HTTP/3 connection to Supabase died
+  silently after ~90–100 s (NAT/UDP timeout) and iOS reused it: POSTs failed with
+  NSURLErrorNetworkConnectionLost (-1005) and are not retried by iOS (sign-in, the PKCE code
+  exchange and a profile save all failed this way). Writes after 25 s of quiet now send one
+  idempotent `GET /auth/v1/health` first (8 s budget, one retry), which makes iOS replace the
+  dead connection; writes are never retried blindly (photo registration is not idempotent).
+- **Password fields.** iOS "Automatic Strong Password" silently filled the sign-up field and the
+  user could not sign in (no Associated Domains, so the generated password is not offered back).
+  Sign-up uses `textContentType="password"` until Associated Domains (`webcredentials:`) exist.
 - **Cache.** Server state lives only in TanStack Query, and every user-owned query key
   includes the user id.
   - The whole cache is cleared on `SIGNED_OUT`.
@@ -93,7 +120,8 @@ open to every signed-in user.
   - `captureError` sends errors only, never mutation variables, so report details and photo
     paths are not sent.
   - `console.error` is used only in `__DEV__` builds.
-- **Analytics.** No product events are defined yet; the catalogue forbids content and PII.
+- **Analytics.** Phase 2M events (sign-in/up method, onboarding step names, counts) carry no
+  content or PII; identity is the opaque user UUID. The catalogue (`events.ts`) forbids content.
 - **Data access.** Screens never import the Supabase client; all access goes through feature
   `api/` modules.
 
@@ -132,21 +160,21 @@ incomplete account, and the owner role (as a stand-in for privileged access).
 
 ## 7. Known accepted risks and deferred items
 
-| Item                                      | Status / decision                                                                                                                                                                                                                            |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Report retention on account deletion      | Reports cascade with the profile, so evidence is lost if the reported user deletes their account. Decide on retention (soft delete or anonymised report rows) in the account-deletion phase.                                                 |
-| Orphan storage objects                    | Possible after a failed object delete or an account deletion. Owner-only and private. Needs a service-role cleanup job, and possibly an upload quota (the policy cannot count objects).                                                      |
-| Likes from before a block survive unblock | For a pair that never matched, a pre-block like can still match after unblock if the other side likes again. Product decision pending.                                                                                                       |
-| Report rate limiting                      | None yet. Add server-side throttling with moderation tooling.                                                                                                                                                                                |
-| Blocked-pair exclusion in discovery       | Required. The future discovery or profile-detail RPC must exclude blocks in both directions and non-discoverable or incomplete profiles, check trip eligibility, and sign photo URLs server-side. Photo policies stay owner-only until then. |
-| Block inference                           | Someone who did not block a person can still infer from the generic error that they were blocked. Mitigated once discovery hides blocked pairs.                                                                                              |
-| Existence probes                          | RPCs return `user not found` for unknown ids and validate trip ids passed as context. Exploiting this needs UUIDs that cannot be guessed. Accepted.                                                                                          |
-| Admin / moderation path                   | `service_role` only. There is no admin role or UI yet.                                                                                                                                                                                       |
-| Account deletion flow                     | Not built.                                                                                                                                                                                                                                   |
-| Audit / event logging                     | None yet. Add security-event logging with the moderation tooling.                                                                                                                                                                            |
-| Photo moderation and EXIF                 | Not built. The picker should use `exif: false`; stripping metadata from the file bytes needs a re-encode step. File content is not sniffed (the declared content type is trusted).                                                           |
-| Production separation                     | development and preview builds use the dev project. Production needs its own Supabase project, its own keys, and `TRIPLY_PRODUCTION_SUPABASE_REF` set (an `app.config.ts` guard).                                                            |
-| Session storage                           | expo-sqlite storage, not the Keychain. Accepted per the Supabase/Expo recommendation.                                                                                                                                                        |
+| Item                                      | Status / decision                                                                                                                                                                                                                                                                                                          |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Report retention on account deletion      | Reports cascade with the profile, so evidence is lost if the reported user deletes their account. Decide on retention (soft delete or anonymised report rows) in the account-deletion phase.                                                                                                                               |
+| Orphan storage objects                    | Possible after a failed object delete or an account deletion. Owner-only and private. Needs a service-role cleanup job, and possibly an upload quota (the policy cannot count objects).                                                                                                                                    |
+| Likes from before a block survive unblock | For a pair that never matched, a pre-block like can still match after unblock if the other side likes again. Product decision pending.                                                                                                                                                                                     |
+| Report rate limiting                      | None yet. Add server-side throttling with moderation tooling.                                                                                                                                                                                                                                                              |
+| Blocked-pair exclusion in discovery       | Required. The future discovery or profile-detail RPC must exclude blocks in both directions and non-discoverable or incomplete profiles, check trip eligibility, and sign photo URLs server-side. Photo policies stay owner-only until then.                                                                               |
+| Block inference                           | Someone who did not block a person can still infer from the generic error that they were blocked. Mitigated once discovery hides blocked pairs.                                                                                                                                                                            |
+| Existence probes                          | RPCs return `user not found` for unknown ids and validate trip ids passed as context. Exploiting this needs UUIDs that cannot be guessed. Accepted.                                                                                                                                                                        |
+| Admin / moderation path                   | `service_role` only. There is no admin role or UI yet.                                                                                                                                                                                                                                                                     |
+| Account deletion flow                     | Not built.                                                                                                                                                                                                                                                                                                                 |
+| Audit / event logging                     | None yet. Add security-event logging with the moderation tooling.                                                                                                                                                                                                                                                          |
+| Photo moderation and EXIF                 | Moderation not built. Since Phase 2M hardening every photo is decoded and re-encoded on the device to a ≤2048 px JPEG (expo-image-manipulator) and only that file is uploaded; the encoders do not copy source EXIF/GPS. Not enforced server-side, and file content is not sniffed (the declared content type is trusted). |
+| Production separation                     | development and preview builds use the dev project. Production needs its own Supabase project, its own keys, and `TRIPLY_PRODUCTION_SUPABASE_REF` set (an `app.config.ts` guard).                                                                                                                                          |
+| Session storage                           | expo-sqlite storage, not the Keychain. Accepted per the Supabase/Expo recommendation.                                                                                                                                                                                                                                      |
 
 ## 8. Production-readiness checklist
 
@@ -158,7 +186,7 @@ incomplete account, and the owner role (as a stand-in for privileged access).
       URLs.
 - [ ] Account deletion with a report-retention decision and storage cleanup.
 - [ ] Moderation tooling (service role) for report status, rate limits and audit logs.
-- [ ] Photo moderation and EXIF stripping.
+- [ ] Photo moderation (client-side EXIF stripping by re-encode is done; no server-side check).
 - [ ] Sentry DSN and source maps configured; `SENTRY_AUTH_TOKEN` kept only as an EAS secret.
 - [ ] Supabase Auth settings reviewed (email confirmation, password policy, rate limits, leaked
       password protection).

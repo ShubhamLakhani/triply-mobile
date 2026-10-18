@@ -5,7 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { AppEnv } from '@/config/env';
-import { registerAuthCacheReset } from '@/features/auth/api/auth-cache';
+import { AuthProvider } from '@/features/auth/providers/AuthProvider';
 import { AnalyticsProvider, createAppAnalytics } from '@/services/analytics';
 import { configureNotificationHandling } from '@/services/notifications';
 import { createQueryClient, setupQueryManagers } from '@/services/query';
@@ -18,7 +18,9 @@ export interface AppProvidersProps {
 
 /**
  * Root provider composition. Order matters:
- * GestureHandlerRootView → SafeAreaProvider → QueryClientProvider → AnalyticsProvider.
+ * GestureHandlerRootView → SafeAreaProvider → QueryClientProvider → AnalyticsProvider → AuthProvider.
+ * AuthProvider owns the app's only auth subscription and clears the query cache on sign-out /
+ * account switch, so it sits inside both the query and analytics providers.
  */
 export function AppProviders({ env, children }: AppProvidersProps) {
   const [queryClient] = useState(createQueryClient);
@@ -26,8 +28,6 @@ export function AppProviders({ env, children }: AppProvidersProps) {
 
   useEffect(() => setupQueryManagers(), []);
   useEffect(() => registerSupabaseAutoRefresh(), []);
-  // Sign-out must not leave the previous account's server state in memory.
-  useEffect(() => registerAuthCacheReset(queryClient), [queryClient]);
   useEffect(() => {
     // Foreground presentation policy only — this never prompts for permission.
     configureNotificationHandling();
@@ -37,7 +37,9 @@ export function AppProviders({ env, children }: AppProvidersProps) {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <AnalyticsProvider client={analytics}>{children}</AnalyticsProvider>
+          <AnalyticsProvider client={analytics}>
+            <AuthProvider>{children}</AuthProvider>
+          </AnalyticsProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

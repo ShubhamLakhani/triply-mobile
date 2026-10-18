@@ -25,3 +25,14 @@ export function isAdult(dateOfBirth: string, today: Date = new Date()): boolean 
 export function isFutureDate(isoDate: string, today: Date = new Date()): boolean {
   return isoDate > toIsoDate(today);
 }
+
+/** Whole years since the given YYYY-MM-DD date, or null if unparsable. */
+export function ageFromDateOfBirth(dateOfBirth: string, today: Date = new Date()): number | null {
+  const [year, month, day] = dateOfBirth.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  let age = today.getFullYear() - year;
+  const beforeBirthday =
+    today.getMonth() + 1 < month || (today.getMonth() + 1 === month && today.getDate() < day);
+  if (beforeBirthday) age -= 1;
+  return age;
+}

@@ -7,9 +7,9 @@ export default function NotFoundScreen() {
   return (
     <AppScreen>
       <AppText variant="h2">This screen doesn’t exist</AppText>
-      <Link href="/discover" accessibilityRole="link">
+      <Link href="/" accessibilityRole="link">
         <AppText variant="bodyStrong" color="primary">
-          Go to Discover
+          Take me home
         </AppText>
       </Link>
     </AppScreen>

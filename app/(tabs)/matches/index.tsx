@@ -1,12 +1,13 @@
-import { PlaceholderScreen } from '@/components/layout/PlaceholderScreen';
+import { ComingSoonScreen } from '@/components/layout/ComingSoonScreen';
 
 export default function MatchesScreen() {
   return (
-    <PlaceholderScreen
+    <ComingSoonScreen
       testID="matches-screen"
       title="Matches"
-      description="Your mutual matches and conversations."
-      plannedPhase="Phase 5M"
+      icon="hearts"
+      headline="Your matches live here"
+      description="When you and another traveller both say yes, you’ll find them here and can start planning."
     />
   );
 }

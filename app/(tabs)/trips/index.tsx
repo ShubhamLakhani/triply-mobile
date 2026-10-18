@@ -1,12 +1,13 @@
-import { PlaceholderScreen } from '@/components/layout/PlaceholderScreen';
+import { ComingSoonScreen } from '@/components/layout/ComingSoonScreen';
 
 export default function TripsScreen() {
   return (
-    <PlaceholderScreen
+    <ComingSoonScreen
       testID="trips-screen"
       title="Trips"
-      description="Your upcoming trips: destination and dates."
-      plannedPhase="Phase 3M"
+      icon="suitcase"
+      headline="Where are you off to?"
+      description="Add upcoming trips with dates and we’ll match you with people who’ll be there at the same time."
     />
   );
 }

@@ -1,9 +1,21 @@
+# PROPOSED CI workflow (reviewed in Phase 2M hardening). NOT ACTIVE: GitHub only runs
+# workflows from .github/workflows/. To activate after founder review:
+#   git mv "Claude outputs/ci.yml" .github/workflows/ci.yml
+#
+# Changes from the Phase 0M draft:
+#   - pushes to `master` (the repository's real default branch; the draft said `main`);
+#   - `npm run migrations:check` added (it is part of `npm run verify` but was missing);
+#   - Jest transform cache restored between runs (cold caches made tests time out);
+#   - `db-tests` job added: migrations + pgTAP on plain PostgreSQL 16 (scripts/db-test/run.sh).
+#     UNVERIFIED until its first run on GitHub (not runnable from the founder's machine yet);
+#   - the audit job stays informational; never `npm audit fix --force`.
+# No secrets are used: builds, store submission and EAS stay manual.
 name: CI
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [master]
 
 permissions:
   contents: read
@@ -18,7 +30,7 @@ env:
 
 jobs:
   verify:
-    name: Lint · Typecheck · Test · Config · Bundle
+    name: Lint · Typecheck · Test · Checks · Bundle
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -38,14 +50,27 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Unit & component tests
-        run: npm run test:ci
+      # Jest's Babel transform cache: a cold cache makes every worker transform React Native
+      # and Expo Router first (minutes); a warm one runs the whole suite in ~30 s.
+      - name: Restore Jest transform cache
+        uses: actions/cache@v4
+        with:
+          path: .jest-cache
+          key: jest-${{ runner.os }}-${{ hashFiles('package-lock.json', 'jest.config.js', 'babel.config.js') }}
+          restore-keys: jest-${{ runner.os }}-
+
+      # Includes tests/config/maestro-ids.test.ts (Maestro flows only use real test IDs).
+      - name: Unit, component and navigation tests
+        run: npm run test:ci -- --cacheDirectory=.jest-cache
 
       - name: Formatting
         run: npm run format:check
 
       - name: Security guard (secrets, EXPO_PUBLIC allowlist, env files)
         run: npm run security:check
+
+      - name: Migration conventions (naming, RLS, revokes, search_path)
+        run: npm run migrations:check
 
       - name: Expo config (all variants)
         run: npm run config:check
@@ -62,6 +87,24 @@ jobs:
         run: |
           npx expo export --platform ios --output-dir dist/ios
           npx expo export --platform android --output-dir dist/android
+
+  db-tests:
+    name: Database (migrations + pgTAP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      # Plain PostgreSQL + the Supabase shim (scripts/db-test/supabase-shim.sql). This
+      # approximates Supabase; the local Supabase stack (`npx supabase test db`) stays the
+      # authoritative check before a hosted `db push`.
+      - name: Install PostgreSQL 16 + pgTAP
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-16 postgresql-16-pgtap
+      - name: Run migrations, seed (twice) and pgTAP suites
+        env:
+          PG_BIN: /usr/lib/postgresql/16/bin
+        run: bash scripts/db-test/run.sh
 
   doctor:
     name: Expo Doctor
