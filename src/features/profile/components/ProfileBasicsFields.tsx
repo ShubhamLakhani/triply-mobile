@@ -10,7 +10,11 @@ import { useZodForm } from '@/hooks/use-zod-form';
 import { spacing } from '@/theme';
 
 import { MINIMUM_AGE } from '../age';
-import { profileBasicsFormSchema, toFormValues } from '../schemas/profile-form.schema';
+import {
+  profileBasicsFormSchema,
+  toFormValues,
+  type ProfileBasicsFormValues,
+} from '../schemas/profile-form.schema';
 import { BIO_MAX_LENGTH, type Gender, type Profile } from '../types';
 
 export const GENDER_OPTIONS: readonly { value: Gender; label: string }[] = [
@@ -25,9 +29,16 @@ export function genderLabel(gender: string | null | undefined): string | null {
   return GENDER_OPTIONS.find((option) => option.value === gender)?.label ?? null;
 }
 
-export function useProfileBasicsForm(profile: Profile | null | undefined) {
+/**
+ * The basics form, seeded from the server row. `overrides` (a restored onboarding draft) win
+ * over the row for the fields they contain; everything else keeps the server value.
+ */
+export function useProfileBasicsForm(
+  profile: Profile | null | undefined,
+  overrides: Partial<ProfileBasicsFormValues> | null = null,
+) {
   return useZodForm(profileBasicsFormSchema, {
-    defaultValues: toFormValues(profile),
+    defaultValues: { ...toFormValues(profile), ...(overrides ?? {}) },
     mode: 'onTouched',
   });
 }

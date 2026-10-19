@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import type { Gender } from '@/features/profile/types';
+import { useUserDraft, type UserDraftStore } from '@/services/storage/user-draft-store';
 
 import type { PreferencesDraft } from '../components/PreferencesFields';
 
@@ -18,14 +19,28 @@ import {
  */
 export type PreferencesDraftStatus = 'loading' | 'error' | 'ready';
 
+export interface PreferencesDraftOptions {
+  /**
+   * Keeps the unsaved values per user on the device (onboarding), so a cold restart resumes
+   * with them. Without a store the draft lives in component state only (profile edit screen).
+   */
+  draftStore?: UserDraftStore<PreferencesDraft>;
+}
+
 /** Editable copy of discovery + gender preferences; saves both in sequence. */
-export function usePreferencesDraft(userId: string | null) {
+export function usePreferencesDraft(
+  userId: string | null,
+  { draftStore = undefined }: PreferencesDraftOptions = {},
+) {
   const discovery = useDiscoveryPreferences(userId);
   const genders = useGenderPreferences(userId);
   const updateDiscovery = useUpdateDiscoveryPreferences(userId);
   const setGenders = useSetGenderPreferences(userId);
   // Local edits only; until the user changes something the saved values are shown directly.
-  const [draft, setDraft] = useState<PreferencesDraft | null>(null);
+  const [memoryDraft, setMemoryDraft] = useState<PreferencesDraft | null>(null);
+  const persistedDraft = useUserDraft(draftStore ?? null, userId);
+  const [draftPersistFailed, setDraftPersistFailed] = useState(false);
+  const draft = draftStore ? persistedDraft : memoryDraft;
 
   const saved: PreferencesDraft | null =
     discovery.data !== undefined && genders.data !== undefined
@@ -51,7 +66,12 @@ export function usePreferencesDraft(userId: string | null) {
     /** The values to show and edit; null until `status` is `ready`. */
     value,
     setValue: (next: PreferencesDraft) => {
-      if (saved) setDraft(next);
+      if (!saved) return;
+      if (draftStore && userId) {
+        if (!draftStore.write(userId, next)) setDraftPersistFailed(true);
+      } else {
+        setMemoryDraft(next);
+      }
     },
     isDirty,
     /** At least one gender preference (required to continue and to save once complete). */
@@ -65,7 +85,13 @@ export function usePreferencesDraft(userId: string | null) {
       void discovery.refetch();
       void genders.refetch();
     },
+    /**
+     * The device copy of the draft could not be written: edits still work this session but
+     * would not survive a cold restart until they are saved.
+     */
+    draftPersistFailed,
     isSaving: updateDiscovery.isPending || setGenders.isPending,
+    /** Saves both tables; the device draft is dropped only once the server has everything. */
     save: async () => {
       if (!value) throw new Error('Preferences are not loaded yet.');
       await updateDiscovery.mutateAsync({
@@ -74,6 +100,7 @@ export function usePreferencesDraft(userId: string | null) {
         minimum_overlap_days: value.minimum_overlap_days,
       });
       await setGenders.mutateAsync(value.genders);
+      if (draftStore && userId) draftStore.clear(userId);
     },
   };
 }

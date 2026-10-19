@@ -1,3 +1,5 @@
+import type { QueryClient } from '@tanstack/react-query';
+
 import {
   ACCOUNT_STATE_QUERY_PREFIX,
   createQueryClient,
@@ -75,28 +77,47 @@ describe('account_inactive handling', () => {
     expect(isAccountInactiveFailure(new Error('x'))).toBe(false);
   });
 
-  it('a mutation failing with account_inactive re-fetches the account state', async () => {
-    const client = createQueryClient();
-    const invalidate = jest.spyOn(client, 'invalidateQueries');
-    await expect(
-      client
-        .getMutationCache()
-        .build(client, {
-          mutationFn: () =>
-            Promise.reject(Object.assign(new Error('x'), { code: 'account_inactive' })),
-        })
-        .execute(undefined),
-    ).rejects.toThrow('x');
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ACCOUNT_STATE_QUERY_PREFIX });
+  describe('with a live query client', () => {
+    let client: QueryClient;
 
-    invalidate.mockClear();
-    await expect(
+    beforeEach(() => {
+      client = createQueryClient();
+    });
+
+    afterEach(() => {
+      // A settled mutation keeps its garbage-collection timer (5 min by default) and
+      // MutationCache.clear() only forgets the entry, never cancels the timer, which Jest reports
+      // as an open handle. Destroy every mutation first, then drop the caches. Runs even when an
+      // assertion above failed.
       client
         .getMutationCache()
-        .build(client, { mutationFn: () => Promise.reject(new Error('network')) })
-        .execute(undefined),
-    ).rejects.toThrow('network');
-    expect(invalidate).not.toHaveBeenCalled();
-    client.clear();
+        .getAll()
+        .forEach((mutation) => mutation.destroy());
+      client.clear();
+      jest.restoreAllMocks();
+    });
+
+    it('a mutation failing with account_inactive re-fetches the account state', async () => {
+      const invalidate = jest.spyOn(client, 'invalidateQueries');
+      await expect(
+        client
+          .getMutationCache()
+          .build(client, {
+            mutationFn: () =>
+              Promise.reject(Object.assign(new Error('x'), { code: 'account_inactive' })),
+          })
+          .execute(undefined),
+      ).rejects.toThrow('x');
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ACCOUNT_STATE_QUERY_PREFIX });
+
+      invalidate.mockClear();
+      await expect(
+        client
+          .getMutationCache()
+          .build(client, { mutationFn: () => Promise.reject(new Error('network')) })
+          .execute(undefined),
+      ).rejects.toThrow('network');
+      expect(invalidate).not.toHaveBeenCalled();
+    });
   });
 });

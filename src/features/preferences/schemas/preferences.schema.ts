@@ -39,5 +39,20 @@ export const genderPreferencesSchema = z
   .array(z.enum(GENDERS, { message: 'Choose a valid option.' }))
   .transform((values) => [...new Set(values)]);
 
+/**
+ * One editable snapshot of both preference tables (the onboarding/edit draft). Used to validate
+ * a draft restored from the device, so an outdated or corrupt value is ignored.
+ */
+export const preferencesDraftSchema = z
+  .object({
+    min_age: age,
+    max_age: age,
+    minimum_overlap_days: z.number().int().min(L.minOverlapDays).max(L.maxOverlapDays),
+    genders: z.array(z.enum(GENDERS)),
+  })
+  .strict()
+  .refine((p) => p.max_age >= p.min_age);
+
 export type DiscoveryPreferencesUpdateInput = z.input<typeof discoveryPreferencesUpdateSchema>;
 export type GenderPreferencesInput = z.input<typeof genderPreferencesSchema>;
+export type PreferencesDraftValue = z.output<typeof preferencesDraftSchema>;

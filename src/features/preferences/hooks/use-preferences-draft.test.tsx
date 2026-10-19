@@ -11,6 +11,17 @@ import type { DiscoveryPreferences } from '../types';
 
 import { usePreferencesDraft } from './use-preferences-draft';
 
+// The selection/draft hooks import the device draft store (expo-sqlite): not under test here.
+jest.mock('@/services/storage/local-storage', () => {
+  const store = new Map<string, string>();
+  return {
+    getDeviceLocalStorage: () => ({
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, v),
+      removeItem: (k: string) => store.delete(k),
+    }),
+  };
+});
 jest.mock('../api/preference-api', () => ({
   fetchOwnDiscoveryPreferences: jest.fn(),
   fetchOwnGenderPreferences: jest.fn(),

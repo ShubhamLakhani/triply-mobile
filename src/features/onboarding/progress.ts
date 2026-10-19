@@ -1,5 +1,8 @@
 import { useCallback, useSyncExternalStore } from 'react';
 
+import { onboardingInterestsDraft } from '@/features/interests/drafts';
+import { onboardingPreferencesDraft } from '@/features/preferences/drafts';
+import { onboardingProfileDraft } from '@/features/profile/drafts';
 import { getDeviceLocalStorage } from '@/services/storage/local-storage';
 
 /**
@@ -36,13 +39,33 @@ function storage(): Storage | null {
   }
 }
 
+// The marker is a convenience (where to resume); a failing device must never fail a step.
+function readMarker(userId: string): string | null {
+  try {
+    return storage()?.getItem(key(userId)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeMarker(userId: string, step: OnboardingStep | null): void {
+  try {
+    const device = storage();
+    if (!device) return;
+    if (step === null) device.removeItem(key(userId));
+    else device.setItem(key(userId), step);
+  } catch {
+    // Best effort: without the marker a restart resumes after the profile step.
+  }
+}
+
 /**
  * Local, per-user record of the furthest step COMPLETED on this device (never sensitive data:
  * it holds a step name only). It only decides where onboarding resumes; whether onboarding is
  * finished is always the server's onboarding_completed_at.
  */
 export function getCompletedStep(userId: string): OnboardingStep | null {
-  const value = storage()?.getItem(key(userId));
+  const value = readMarker(userId);
   return value && (ONBOARDING_STEPS as readonly string[]).includes(value)
     ? (value as OnboardingStep)
     : null;
@@ -51,12 +74,16 @@ export function getCompletedStep(userId: string): OnboardingStep | null {
 export function markStepCompleted(userId: string, step: OnboardingStep): void {
   const current = getCompletedStep(userId);
   if (current && stepIndex(current) >= stepIndex(step)) return;
-  storage()?.setItem(key(userId), step);
+  writeMarker(userId, step);
   emit();
 }
 
+/** Forgets the resume marker and any unsaved step drafts (onboarding finished, or reset). */
 export function clearOnboardingProgress(userId: string): void {
-  storage()?.removeItem(key(userId));
+  writeMarker(userId, null);
+  onboardingProfileDraft.clear(userId);
+  onboardingInterestsDraft.clear(userId);
+  onboardingPreferencesDraft.clear(userId);
   emit();
 }
 

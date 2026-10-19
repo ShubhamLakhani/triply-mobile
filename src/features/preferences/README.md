@@ -10,6 +10,12 @@ The signed-in user's discovery preferences (see `supabase/README.md → Preferen
 - `schemas/preferences.schema.ts`: age 18–99 (max ≥ min), overlap 1–60 days, gender values
   from `GENDERS`
 - `components/PreferencesFields.tsx`: the fields; `toggleGenderPreference` / `isEveryone`
+- `hooks/use-preferences-draft.ts`: editable copy of both tables. With `{ draftStore }` the
+  unsaved values are kept per user on the device (`draftPersistFailed` reports a failed device
+  write); `save()` drops the draft only once both tables were saved, so a half-saved attempt is
+  completed on retry.
+- `drafts.ts`: `onboardingPreferencesDraft`, the onboarding step's device draft store
+  (validated with `preferencesDraftSchema`). Not used by the profile edit screen.
 
 The preferences row is created automatically with the profile, so the app only reads and
 updates it. At least one gender preference is required to finish onboarding and to save once

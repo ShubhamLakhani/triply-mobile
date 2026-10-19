@@ -17,6 +17,10 @@ Own profile data layer plus the Profile tab and edit screens (Phase 2M).
   preferences cannot be saved empty, and the last photo can only be replaced.
 - `components/profile-messages.ts`: user-safe messages for profile, interest and preference
   errors (incl. `under_18`, `date_of_birth_locked`, `account_inactive`).
+- `drafts.ts`: `onboardingProfileDraft`, the onboarding profile step's device draft (first name,
+  date-of-birth parts and gender exactly as typed; validated on read, per user). Used only by
+  `features/onboarding` `ProfileStep`; `useProfileBasicsForm(profile, overrides)` overlays it on
+  the server row. The edit screen does not draft.
 - Limits: bio optional, ≤ 500 characters. Server-owned: `is_profile_complete`,
   `onboarding_completed_at`, `discovery_paused_at`; `is_discoverable` is deprecated and unread.
 - `age.ts`: `isAdult`, `ageFromDateOfBirth` (client-side mirrors; the database is the authority).

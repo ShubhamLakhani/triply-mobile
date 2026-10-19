@@ -12,6 +12,17 @@ import { createTestProviders } from '../../../../tests/utils/render-with-provide
 
 import { EditPreferencesScreen } from './EditPreferencesScreen';
 
+// The selection/draft hooks import the device draft store (expo-sqlite): not under test here.
+jest.mock('@/services/storage/local-storage', () => {
+  const store = new Map<string, string>();
+  return {
+    getDeviceLocalStorage: () => ({
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, v),
+      removeItem: (k: string) => store.delete(k),
+    }),
+  };
+});
 jest.mock('@/features/auth/hooks/use-auth-session', () => ({ useAuthSession: jest.fn() }));
 jest.mock('expo-router', () => ({ router: { back: jest.fn(), canGoBack: () => true } }));
 jest.mock('@/features/preferences/api/preference-api', () => ({

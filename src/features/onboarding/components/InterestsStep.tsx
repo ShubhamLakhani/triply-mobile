@@ -1,7 +1,9 @@
 import { useState } from 'react';
 
 import { RetryNotice } from '@/components/feedback/RetryNotice';
+import { InlineMessage } from '@/components/ui/InlineMessage';
 import { InterestPicker } from '@/features/interests/components/InterestPicker';
+import { onboardingInterestsDraft } from '@/features/interests/drafts';
 import { useInterestSelection } from '@/features/interests/hooks/use-interest-selection';
 import { MAX_INTERESTS, MIN_INTERESTS } from '@/features/interests/types';
 import { interestErrorMessage } from '@/features/profile/components/profile-messages';
@@ -10,16 +12,19 @@ import { useOnboardingStep } from '../hooks/use-onboarding-step';
 
 import { OnboardingShell } from './OnboardingShell';
 
-/** Step 2: 3–8 interests (required to complete onboarding; atomic save). */
+/**
+ * Step 2: 3–8 interests (required to complete onboarding; atomic save). The unsaved selection
+ * is kept per user on the device, so a force-close before Continue resumes with the same chips.
+ */
 export function InterestsStep() {
   const { userId, advance, back } = useOnboardingStep('interests');
-  const selection = useInterestSelection(userId);
+  const selection = useInterestSelection(userId, { draftStore: onboardingInterestsDraft });
   const [error, setError] = useState<string | null>(null);
 
   const save = async () => {
     setError(null);
     try {
-      if (selection.isDirty) await selection.save();
+      await selection.save();
       advance();
     } catch (cause) {
       setError(interestErrorMessage(cause));
@@ -43,6 +48,13 @@ export function InterestsStep() {
       error={error}
       testID="onboarding-interests"
     >
+      {selection.draftPersistFailed ? (
+        <InlineMessage
+          tone="error"
+          message="We couldn’t keep a copy of your picks on this device. Tap Continue to save them to your account."
+          testID="interests-draft-error"
+        />
+      ) : null}
       {selection.isError ? (
         <RetryNotice
           message="We couldn’t load interests. Check your connection and try again."
